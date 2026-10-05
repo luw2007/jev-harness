@@ -43,6 +43,16 @@ export async function verifyArenaHistory(page, baseURL, screenshotDir) {
     check(await page.locator(".history-run").count() === 2 && await page.locator(".trend-integrated circle").count() === 2, "history pairs saved rows with plotted observations");
     check((await page.locator(".history-run").first().getAttribute("aria-label")).includes("Without Jev: 1,200 input tokens. With Jev including routing: 1,100 input tokens."), "history rows expose labeled paired values to assistive technology");
     check((await page.locator(".history-stats").textContent()).includes("1,075"), "history input medians include Jev overhead");
+    await page.getByRole("checkbox", { name: "Chart only pairs marked Meets task" }).check();
+    check(await page.locator(".history-chart").count() === 0, "review filter removes a chart with no assessed pairs");
+    await page.getByRole("checkbox", { name: "Chart only pairs marked Meets task" }).uncheck();
+    await page.setViewportSize({ width: 390, height: 1000 });
+    await page.waitForFunction(() => {
+      const figure = document.querySelector(".history-chart"), svg = figure?.querySelector("svg");
+      return svg && Math.abs(svg.viewBox.baseVal.width - Math.max(250, Math.min(1200, figure.clientWidth))) < 1;
+    });
+    check(await page.locator(".trend-integrated circle").count() === 2, "restored chart resumes responsive sizing without changing observations");
+    await page.setViewportSize({ width: 1440, height: 1000 });
     await page.getByRole("button", { name: "Time", exact: true }).click();
     check((await page.locator(".history-stats").textContent()).includes("1.2 s"), "time series includes routing duration");
     await page.locator(".history-run").last().click();

@@ -12,9 +12,11 @@ export function ArenaHistory({ runs, assessments, fixture, selectedId, pending, 
   const [reviewedOnly, setReviewedOnly] = useState(false);
   const chart = useRef<HTMLElement>(null);
   const [chartWidth, setChartWidth] = useState(840);
-  useEffect(() => { const node = chart.current; if (!node) return; const observer = new ResizeObserver(entries => { const width = entries[0]?.contentRect.width; if (width) setChartWidth(Math.max(250, Math.min(1200, width))); }); observer.observe(node); return () => observer.disconnect(); }, [runs, fixture.id, metric]);
   const related = runs.filter(run => run.fixture.id === fixture.id);
   const { points, excluded } = performanceSeries(reviewedOnly ? runs.filter(run => pairedPass(assessments.find(a => a.runId === run.id))) : runs, fixture, metric);
+  const hasChart = points.length > 0;
+  // Filtering can replace the figure without changing the runs or metric.
+  useEffect(() => { const node = chart.current; if (!node) return; const observer = new ResizeObserver(entries => { const width = entries[0]?.contentRect.width; if (width) setChartWidth(Math.max(250, Math.min(1200, width))); }); observer.observe(node); return () => observer.disconnect(); }, [hasChart]);
   const reviewed = related.filter(run => { const a = assessments.find(a => a.runId === run.id); return a && a.baseline !== "unreviewed" && a.integrated !== "unreviewed"; });
   const passing = related.filter(run => pairedPass(assessments.find(a => a.runId === run.id))).length;
   const max = Math.max(1, ...points.flatMap(point => [point.baseline, point.integrated]));
