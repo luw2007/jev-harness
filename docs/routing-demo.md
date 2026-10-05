@@ -50,6 +50,9 @@ Only fixed case ids are accepted, with no browser-supplied command, cwd, script 
 
 Cleanup also terminates descendants that outlive a completed, failed or
 interrupted CLI parent.
+The host begins cleanup on parent exit even when a descendant holds an inherited
+output pipe open, so settlement does not wait for that pipe's natural closure.
+Cancelled calls are checked before preparation and again before CLI dispatch.
 Answers use streaming UTF-8 decoding so chunk boundaries preserve multilingual
 text. Request-body reads stop on browser cancellation.
 

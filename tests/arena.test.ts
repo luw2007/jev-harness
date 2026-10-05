@@ -5,6 +5,7 @@ import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { once } from "node:events";
+import { existsSync } from "node:fs";
 import { ARENA_CASES } from "../examples/arena/cases";
 import { DEMO_CATALOG } from "../examples/routing/scenarios";
 import { runCodex, codexArguments } from "../examples/host/codex";
@@ -191,4 +192,46 @@ test("CLI completion and failure settle their process group without changing rec
     for (let i = 0; i < 100 && alive(); i++) await new Promise(resolve => setTimeout(resolve, 10));
     assert.equal(alive(), false, `${status} parent must leave no running descendant in its group`);
   }
+});
+
+test("CLI parent exit cleans descendants that keep its stdout pipe open", async t => {
+  if (process.platform === "win32") { t.skip("Process-tree cleanup is unsupported on Windows."); return; }
+  const dir = await mkdtemp(join(tmpdir(), "jev-cli-pipe-test-"));
+  const fake = join(dir, "fake-cli"), ready = join(dir, "ready"), survived = join(dir, "survived");
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const descendant = `const fs=require("node:fs");fs.writeFileSync(${JSON.stringify(ready)},"ready");setTimeout(()=>fs.writeFileSync(${JSON.stringify(survived)},"survived parent exit"),500);`;
+  await writeFile(fake, `#!/usr/bin/env node\nconst {spawn}=require("node:child_process");const {existsSync}=require("node:fs");const child=spawn(process.execPath,["-e",${JSON.stringify(descendant)}],{stdio:["ignore","inherit","inherit"]});child.unref();const timer=setInterval(()=>{if(!existsSync(${JSON.stringify(ready)}))return;clearInterval(timer);console.log(JSON.stringify({type:"turn.completed",usage:{input_tokens:2,output_tokens:1}}));},5);process.stdin.resume();\n`, { mode: 0o700 });
+  const result = await runCodex(ARENA_CASES[0], [], new AbortController().signal, fake);
+  assert.equal(result.status, "completed");
+  assert.equal(result.inputTokens, 2);
+  assert.equal(existsSync(survived), false, "cleanup must run on parent exit without waiting for inherited pipes to close");
+});
+
+test("pre-aborted CLI runs return before fixture preparation or process dispatch", async t => {
+  if (process.platform === "win32") return;
+  const dir = await mkdtemp(join(tmpdir(), "jev-cli-preabort-test-")), fake = join(dir, "fake-cli");
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  await writeFile(fake, '#!/usr/bin/env node\nprocess.stdin.resume();\n', { mode: 0o700 });
+  let reads = 0;
+  const fixture = { task: ARENA_CASES[0].task, get files() { reads++; return ARENA_CASES[0].files; } };
+  const result = await runCodex(fixture, [], AbortSignal.abort(), fake);
+  assert.equal(reads, 0);
+  assert.equal(result.status, "cancelled");
+  assert.equal(result.durationMs, 0);
+  assert.equal(result.inputTokens, null);
+  assert.equal(result.toolCallCount, 0);
+});
+
+test("cancellation during CLI preparation stops before process dispatch", async t => {
+  if (process.platform === "win32") return;
+  const dir = await mkdtemp(join(tmpdir(), "jev-cli-preparing-test-")), fake = join(dir, "fake-cli");
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  await writeFile(fake, '#!/usr/bin/env node\nprocess.stdin.resume();\n', { mode: 0o700 });
+  const abort = new AbortController();
+  const fixture = { task: ARENA_CASES[0].task, get files() { abort.abort(); return ARENA_CASES[0].files; } };
+  const result = await runCodex(fixture, [], abort.signal, fake);
+  assert.equal(result.status, "cancelled");
+  assert.match(result.error!, /before CLI dispatch/);
+  assert.equal(result.inputTokens, null);
+  assert.equal(result.toolCallCount, 0);
 });
