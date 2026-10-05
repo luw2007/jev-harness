@@ -7,6 +7,7 @@
  *
  *   node scripts/check-secrets.mjs --staged          # pre-commit
  *   node scripts/check-secrets.mjs <file> [<file>…]  # explicit
+ *   node scripts/check-secrets.mjs -- <file>        # option-like filenames
  *   node scripts/check-secrets.mjs --all             # every tracked file
  */
 import { execFileSync } from "node:child_process";
@@ -33,21 +34,28 @@ function git(...args) {
 }
 
 function targets(argv) {
-  if (argv.includes("--staged"))
-    return git("diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR").split("\0").filter(Boolean);
-  if (argv.includes("--all")) return git("ls-files", "-z").split("\0").filter(Boolean);
-  return argv.filter((a) => !a.startsWith("--"));
+  if (argv.length === 1 && argv[0] === "--staged")
+    return { staged: true, paths: git("diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR").split("\0").filter(Boolean) };
+  if (argv.length === 1 && argv[0] === "--all")
+    return { staged: false, paths: git("ls-files", "-z").split("\0").filter(Boolean) };
+  const explicit = argv[0] === "--";
+  const paths = explicit ? argv.slice(1) : argv;
+  if (!paths.length || paths.some(path => !path || (!explicit && path.startsWith("-")))) {
+    console.error("Usage: check-secrets.mjs --staged | --all | [--] FILE [FILE…]");
+    process.exit(2);
+  }
+  return { staged: false, paths };
 }
 
 function staged(path) {
   return execFileSync("git", ["show", `:${path}`], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 }
 
-const isStaged = process.argv.includes("--staged");
+const { staged: isStaged, paths } = targets(process.argv.slice(2));
 const findings = [];
-for (const path of targets(process.argv.slice(2))) {
+for (const path of paths) {
   if (ENV_PATH.test(path) && !ENV_ALLOW.test(path)) {
-    findings.push(`${path}: .env files are never committed (only .env.example)`);
+    findings.push(`${JSON.stringify(path)}: .env files are never committed (only .env.example)`);
     continue;
   }
   if (SKIP.test(path)) continue;

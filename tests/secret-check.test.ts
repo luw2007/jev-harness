@@ -79,3 +79,21 @@ test("unambiguous placeholders and the example env file pass", () => {
     assert.equal(scan(dir, "--staged").status, 1);
   });
 });
+
+test("secret check refuses missing, unknown and conflicting modes instead of reporting an empty clean scan", () => {
+  withRepo(dir => {
+    for (const args of [[], ["--stage"], ["--all", "--staged"], ["--all", "missing.txt"], ["--staged", "--staged"]]) {
+      const result = scan(dir, ...args);
+      assert.equal(result.status, 2, `invalid arguments ${JSON.stringify(args)} must fail before scanning`);
+      assert.match(result.output, /Usage:/);
+      assert.doesNotMatch(result.output, /inputs clean|staged files clean/);
+    }
+  });
+});
+
+test("explicit paths after -- include filenames that start with option characters", () => {
+  withRepo(dir => {
+    writeFileSync(join(dir, "--candidate.txt"), candidate);
+    assert.equal(scan(dir, "--", "--candidate.txt").status, 1);
+  });
+});

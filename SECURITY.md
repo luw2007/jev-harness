@@ -1,6 +1,8 @@
 # Security
 
-This repository has no live provider transport and no code path that executes
+The exported pure package has no provider transport. The optional loopback demo
+owns explicit provider adapters for synthetic tasks; see the
+[host boundary](docs/routing-demo.md#local-host-boundary). No code path executes
 a proposal. Bugs that make evidence look more trustworthy than it is still
 matter. The optional audit adapter does not authenticate records merely by
 hashing them; see [receipt-binding limitations](docs/hardening/05-receipt-binding.md).
@@ -44,6 +46,11 @@ Do not disable or bypass hooks, scanners, signing, or required CI to land a
 change. For a false positive, use unambiguous placeholders such as `<your-key>`,
 `$ENV_VAR`, or `op://` references and rerun the check. For a real credential,
 stop and rotate it; do not merely amend it away.
+
+The built-in scanner accepts exactly one mode (`--staged` or `--all`) or an
+explicit file list. Missing, unknown or conflicting options fail with usage
+status instead of reporting an empty clean scan. Use `--` before explicit paths
+whose filenames start with `-`.
 
 ## Evidence handling
 
