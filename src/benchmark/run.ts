@@ -14,7 +14,6 @@ import { decide, REVIEW_CONFIDENCE_THRESHOLD, type Decision } from "../contract/
 import type { RunPayload } from "../contract/payload";
 import { reviewProposal, type ReviewOptions } from "../contract/review";
 import {
-  JEV_MODEL,
   type Fixture,
   type JevReview,
   type JevSource,
@@ -54,6 +53,9 @@ export async function runProposalReview(
   options: RunOptions,
 ): Promise<RunResult> {
   const mode: ReviewMode = options.mode ?? "plus_jev";
+  const threshold = options.threshold ?? REVIEW_CONFIDENCE_THRESHOLD;
+  if (mode === "plus_jev" && (!Number.isFinite(threshold) || threshold < 0.5 || threshold > 1))
+    throw Error("Confidence threshold must be between 0.5 and 1.");
   const proposal = await proposer.propose(fixture, options.arm);
   const validation = validateProposal(proposal, fixture.files);
   let jev: JevReview | null = null;
@@ -61,27 +63,17 @@ export async function runProposalReview(
   let decision: Decision;
   if (mode === "base") decision = decideBase(validation);
   else {
-    if (validation.ok) {
-      if (!transport)
-        jev = {
-          model: options.model ?? JEV_MODEL,
-          answers: null,
-          error: "No Jev transport configured.",
-          latencyMs: 0,
-          source: options.source ?? "jev",
-        };
-      else {
-        const reviewOptions: ReviewOptions = {};
-        if (options.signal) reviewOptions.signal = options.signal;
-        if (options.model !== undefined) reviewOptions.model = options.model;
-        if (options.source) reviewOptions.source = options.source;
-        if (options.clock) reviewOptions.clock = options.clock;
-        const { payload, raw, ...review } = await reviewProposal(fixture, proposal, transport, reviewOptions);
-        jev = review;
-        exchange = { payload, response: raw };
-      }
+    if (validation.ok && transport) {
+      const reviewOptions: ReviewOptions = {};
+      if (options.signal) reviewOptions.signal = options.signal;
+      if (options.model !== undefined) reviewOptions.model = options.model;
+      if (options.source) reviewOptions.source = options.source;
+      if (options.clock) reviewOptions.clock = options.clock;
+      const { payload, raw, ...review } = await reviewProposal(fixture, proposal, transport, reviewOptions);
+      jev = review;
+      exchange = { payload, response: raw };
     }
-    decision = decide(validation, jev, options.threshold ?? REVIEW_CONFIDENCE_THRESHOLD);
+    decision = decide(validation, jev, threshold);
   }
   const pending = decision.verdict === "permit" || decision.verdict === "proposal_only";
   const receipt: Receipt = {

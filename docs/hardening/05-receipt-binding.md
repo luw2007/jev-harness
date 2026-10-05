@@ -17,6 +17,11 @@ come from independently trusted host policy/current state, never from the
 untrusted record being checked. Different question text/criteria is detectable
 because the exact request body is bound, even if a version bump was forgotten.
 
+The requested model is always pinned. Real-source replies must report that
+model. Mock-source replies preserve their nonempty reported model, including
+`mock-scripted`, without relabeling it as a real Jev reply. Source substitution
+still invalidates the binding.
+
 Question-set bindings must equal the current `REVIEW_QUESTION_SET_VERSION`,
 now 4. A prior v1, v2 or v3 bound receipt requires the corresponding historical code
 and independently trusted binding for replay; current v4 code rejects each

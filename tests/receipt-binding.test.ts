@@ -3,6 +3,10 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { decide, JEV_MODEL, REVIEW_QUESTION_SET_VERSION, type Receipt, type JevReview } from "../src";
 import { AUDIT_POLICY_VERSION, canonicalJson, createBoundReceipt, replayBoundReceipt, type EvidenceBinding } from "../src/audit/receipt";
+import { loadFixtures } from "../src/benchmark/load";
+import { createMockTransport, MOCK_MODEL } from "../src/benchmark/mock";
+import { FixtureProposer } from "../src/benchmark/proposer";
+import { runProposalReview } from "../src/benchmark/run";
 function sample(threshold = 0.8) {
   const proposal = { tool: "read_file" as const, path: "a.ts", rationale: "Inspect synthetic input", evidence: [] };
   const answers: NonNullable<JevReview["answers"]> = {
@@ -28,6 +32,69 @@ test("bound receipt replays without any transport and preserves schema v1", () =
   assert.deepEqual(replayBoundReceipt(JSON.parse(JSON.stringify(envelope)), binding), { ok: true, decision: decide(receipt.validation, receipt.jev, binding.threshold) });
   receipt.proposal.rationale = "mutated after recording";
   assert.notEqual(envelope.receipt.proposal.rationale, receipt.proposal.rationale);
+});
+
+test("scripted benchmark receipts bind and replay with distinct requested and mock models", async () => {
+  const fixture = loadFixtures().find(f => f.category === "clean")!;
+  const { receipt, exchange } = await runProposalReview(
+    fixture, new FixtureProposer(), createMockTransport([fixture]),
+    { arm: "good", source: "mock", clock: () => 0, now: () => "2026-10-05T00:00:00Z" },
+  );
+  assert.ok(exchange);
+  assert.equal(receipt.verdict, "permit");
+  assert.equal(receipt.jev?.model, MOCK_MODEL);
+  assert.equal(exchange.payload.model, JEV_MODEL);
+  const binding: EvidenceBinding = {
+    policyVersion: AUDIT_POLICY_VERSION, decisionRevision: "a".repeat(40), threshold: 0.8,
+    questionSetVersion: REVIEW_QUESTION_SET_VERSION, requestedModel: JEV_MODEL, source: "mock",
+    workspace: { task: fixture.task, files: fixture.files }, requestBody: JSON.stringify(exchange.payload),
+  };
+  const envelope = createBoundReceipt(receipt, binding);
+  assert.equal(envelope.receipt.jev?.model, MOCK_MODEL);
+  assert.deepEqual(replayBoundReceipt(envelope, binding), {
+    ok: true, decision: decide(receipt.validation, receipt.jev, binding.threshold),
+  });
+  assert.throws(() => createBoundReceipt(receipt, { ...binding, source: "jev" }), /mismatch/);
+  const mislabeled: Receipt = { ...receipt, jev: { ...receipt.jev!, source: "jev" } };
+  assert.throws(() => createBoundReceipt(mislabeled, { ...binding, source: "jev" }), /mismatch/);
+});
+
+test("a runner with no transport records no review or request and replays as unavailable", async () => {
+  const fixture = loadFixtures().find(f => f.category === "clean")!;
+  const { receipt, exchange } = await runProposalReview(fixture, new FixtureProposer(), null, {
+    arm: "good", now: () => "2026-10-05T00:00:00Z",
+    clock: () => { throw Error("No reviewer clock should run without a transport."); },
+  });
+  assert.equal(receipt.verdict, "unavailable");
+  assert.equal(receipt.jev, null);
+  assert.equal(exchange, null);
+  assert.match(receipt.reason, /review was not performed.*proposal-only/);
+  assert.equal(receipt.execution.applied, false);
+  assert.equal(receipt.execution.status, "withheld");
+  const binding: EvidenceBinding = {
+    policyVersion: AUDIT_POLICY_VERSION, decisionRevision: "a".repeat(40), threshold: 0.8,
+    questionSetVersion: REVIEW_QUESTION_SET_VERSION, requestedModel: JEV_MODEL, source: "none",
+    workspace: { task: fixture.task, files: fixture.files }, requestBody: null,
+  };
+  const envelope = createBoundReceipt(receipt, binding);
+  assert.deepEqual(replayBoundReceipt(envelope, binding), {
+    ok: true, decision: decide(receipt.validation, null, binding.threshold),
+  });
+});
+
+test("audit review models remain nonempty and real-source models remain pinned", () => {
+  const { receipt, binding } = sample();
+  for (const model of ["", null, 7]) {
+    const malformed = { ...receipt, jev: { ...receipt.jev, model } } as unknown as Receipt;
+    assert.throws(() => createBoundReceipt(malformed, binding), /mismatch/);
+  }
+  const realBinding: EvidenceBinding = { ...binding, source: "jev" };
+  const realReceipt: Receipt = { ...receipt, jev: { ...receipt.jev!, source: "jev" } };
+  assert.equal(replayBoundReceipt(createBoundReceipt(realReceipt, realBinding), realBinding).ok, true);
+  for (const model of ["jev-latest", "jev-1.12.0", MOCK_MODEL]) {
+    const mismatched: Receipt = { ...realReceipt, jev: { ...realReceipt.jev!, model } };
+    assert.throws(() => createBoundReceipt(mismatched, realBinding), /mismatch/);
+  }
 });
 
 test("threshold ambiguity and dirty-workspace changes are detected", () => {

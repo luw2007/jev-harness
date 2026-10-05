@@ -24,16 +24,18 @@ export function createMockTransport(
   for (const fixture of fixtures)
     for (const arm of ["good", "bad"] as const) {
       const proposal = fixture.proposals[arm];
-      table.set(
-        key({
-          tool: proposal.tool,
-          path: proposal.path,
-          ...(proposal.patch !== undefined ? { patch: proposal.patch } : {}),
-          rationale: proposal.rationale,
-          evidence: proposal.evidence,
-        }),
-        fixture.mock[arm],
-      );
+      const proposalKey = key({
+        tool: proposal.tool,
+        path: proposal.path,
+        ...(proposal.patch !== undefined ? { patch: proposal.patch } : {}),
+        rationale: proposal.rationale,
+        evidence: proposal.evidence,
+      });
+      const scripted = fixture.mock[arm];
+      const previous = table.get(proposalKey);
+      if (previous && REVIEW_QUESTION_IDS.some(id => previous[id] !== scripted[id]))
+        throw Error("Mock transport has conflicting scripted answers for the same proposal.");
+      table.set(proposalKey, scripted);
     }
   return async (payload, signal) => {
     if (signal?.aborted) throw Error("Mock transport cancelled.");

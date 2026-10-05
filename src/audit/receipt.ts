@@ -120,7 +120,9 @@ function auditDecision(receiptInput: unknown, bindingInput: unknown): Decision {
     if (binding.source !== "none" || binding.requestBody !== null) throw Error("Unreviewed receipt has review provenance.");
   } else {
     const jev = requireRecord(receipt.jev, "review");
-    if (jev.model !== binding.requestedModel || jev.source !== binding.source || binding.source === "none") throw Error("Model/source mismatch.");
+    if (typeof jev.model !== "string" || jev.model.length === 0 ||
+        (binding.source === "jev" && jev.model !== binding.requestedModel) ||
+        jev.source !== binding.source || binding.source === "none") throw Error("Model/source mismatch.");
     if (typeof binding.requestBody !== "string") throw Error("Reviewed receipt needs its exact request body.");
     const request = requireRecord(JSON.parse(binding.requestBody), "request");
     const state = requireRecord(request.state, "request state");
