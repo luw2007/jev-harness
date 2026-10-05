@@ -48,6 +48,11 @@ Each lane gets a temporary working directory and an auth-only Codex home. Only `
 
 Only fixed case ids are accepted, with no browser-supplied command, cwd, script or model. The host permits one comparison at a time. Each CLI run has time/output bounds, and cancellation terminates its process group, escalating after a short grace period. Provider failures remain visible and do not trigger a mock fallback. Recorded proposals retain their path, diff and rationale in the tool trace and download, with `applied: false`. The MCP host limits handler execution to the first 100 calls and retained proposal content to 256 KB per lane; later/excess proposals are rejected rather than claimed as recorded. No model-proposed patch is applied, tested or committed.
 
+Cleanup also terminates descendants that outlive a completed, failed or
+interrupted CLI parent.
+Answers use streaming UTF-8 decoding so chunk boundaries preserve multilingual
+text. Request-body reads stop on browser cancellation.
+
 The lanes run concurrently after routing. Shared resource contention can affect timing. Both lanes have the same task, fixture, CLI settings and default model, but independent model trajectories and cache effects. Exposed-tool selection is the treatment; this does not gate all operations in a general-purpose production agent. One run does not establish quality, accuracy, latency or cost improvements. Task quality is not scored automatically.
 
 ## Lessons from a simulation
@@ -74,9 +79,17 @@ Input and duration trends pair completed lanes only when the fixture id, task, f
 
 History is unencrypted local evidence, not authenticated provenance or an account-wide database. It contains no API-key fields. Clear local history requires confirmation and leaves the API key and usage log intact; clearing usage leaves comparisons intact. Saved results from another port or device are not synchronized.
 
+The chart continues observing its size after an assessment filter removes and
+recreates it, including later viewport changes.
+
 ## Local host boundary
 
 The Next.js API requires loopback Host/Origin for live operations, bounded JSON bodies and explicit POST requests. `/api/route` rebuilds its payload from the fixed catalog, pins `jev-1.13.0`, validates the full distribution and strips provider error bodies. It limits physical provider requests, including recovery, to 30/minute and two concurrent logical calls per process across tabs and keys. These are local safeguards, not authentication or account-wide quotas. Do not forward this local app publicly.
+
+Provider requests reject redirects instead of forwarding payloads to another
+destination. The review-experiment host bounds fetch and response reads under
+one deadline, including transports that ignore cancellation, and records
+actual received bytes.
 
 The demo selects `probability_sum_only_v1` in
 `examples/routing/host-policy.ts` through the configurable `createLiveHandler`: at most three total identical requests for a sole

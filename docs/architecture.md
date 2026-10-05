@@ -162,6 +162,9 @@ Enum fields require exact strings. Any validation rejection must have no retaine
 review provenance. The encoding budget includes escaped strings, keys, and
 punctuation and is enforced before joining containers. Creation checks the
 complete envelope, including integrity metadata, against the replay limits.
+Requested models remain pinned for every source. Real replies must report that
+same model; explicitly labeled mock replies retain their nonempty reported
+model, including `mock-scripted`, in the bound receipt and offline replay.
 Question-set bindings must match the current `REVIEW_QUESTION_SET_VERSION`.
 A prior v1, v2 or v3 bound receipt requires the corresponding historical code and
 its independently trusted binding for replay; current v4 code rejects all three.
@@ -197,7 +200,16 @@ and the Node-only `load.ts`, which is not re-exported. The runner's base mode
 uses the benchmark `decideBase`; it never substitutes for a failed review, and
 no receipt it produces records an applied change. `pnpm bench:review` runs the
 25 synthetic fixtures offline with the mock transport and prints scripted
-totals, not measurements.
+totals, not measurements. The fixture runner rejects an invalid review threshold before asking
+the proposer or transport. Mock lookup remains keyed by proposal contents;
+conflicting scripts for the same proposal fail at construction instead of
+depending on fixture order. Identical duplicate scripts remain supported.
+With no configured transport, the unavailable receipt retains `jev: null` and
+no exchange or fabricated provider provenance.
+
+Offline review analysis reconciles corrections by timestamp instant rather
+than string order, keeps the last input on equal instants, and rejects invalid
+timestamps or duplicate case/mode labels and receipts within a logical run.
 
 The `clean-read-before-edit-content-not-in-evidence` fixture pairs a read with an
 unsupported guessed edit: the bad proposal claims an ignored legacy field
@@ -246,6 +258,24 @@ authorization, or isolated execution. Future evaluation must follow the
 `src/routing/` supplies a pure catalog, injected `ToolRouter` seam, deterministic selection policy and schema context assembly. It does not change proposal-review decisions. `examples/routing/` contains synthetic evidence and paired context evaluation. See [Routing evidence and dynamic tool context](routing.md) for outcome semantics, host adapter mapping, cost assumptions and the live-measurement gate.
 
 The optional demo is a Next.js App Router host (`app/`, `components/`, `examples/host/`). The Arena is the sole application page, with Compare/History/Integrate views, native radio example cards and modal detail drawers. React retains key controls and the usage dialog. A browser-only adapter outside `src/` stores bounded, versioned run snapshots. Pure history helpers validate stored data and restrict trend pairs to complete lanes with matching fixture contents and setup revision; missing metrics remain unknown. This cache is inspectable evidence, not authenticated provenance or execution authority. The host adapter is not exported by `src/`. Explicit live requests rebuild the fixed choice payload and validate evidence before browser policy/context assembly. The arena uses the same routing core to choose the MCP tool list for a fresh Codex CLI process; its host can read synthetic fixtures and record pending proposals, never apply or execute them. Server credentials remain server-only; personal overrides follow the playground's masked origin-local storage behavior. See [the demo guide](routing-demo.md) for credentials, process isolation, egress, usage and failure boundaries.
+
+Incoming JSON reads honor request cancellation. Review-experiment fetches and
+response reads share the deadline even when an injected transport ignores its
+signal; byte telemetry counts received bytes. Provider requests refuse redirects
+to keep their fixed egress destination. CLI runs finish process-group cleanup
+even if the parent exits before its descendants.
+Streaming UTF-8 decoding preserves answers split across stdout chunks. History
+chart sizing reconnects when its assessment filter removes and recreates the
+figure.
+
+The paired routing experiment checks cancellation before every proposer
+dispatch, with or without prerequisites. Undispatched input has zero proxy and
+tool exposure, with an explicit `proposer.dispatched: false` artifact marker;
+replay validates its cancelled state and empty evidence. Late results retain
+their usage and trace but remain cancelled for scoring.
+The [offline optimization verification](verification/autonomous-optimization-2026-10-05.json)
+records regression tests, production browser checks and preserved historical
+results for these corrections.
 
 `examples/arena/lessons.ts` derives versioned observations and testable recommendations from a settled `ArenaRun`. It uses reported scalar metrics, routing outcome and both tool traces, never treats an answer or rationale as instructions, and makes no I/O or policy changes. Paired input/time deltas require a complete run and complete lanes; integrated totals include Jev. Invalid or missing numbers remain unknown. Rejected calls, absent tool evidence and truncated traces in either lane precede performance tuning. The UI derives lessons for current or reopened snapshots and attaches the analysis version and source run id to downloads; it does not change the stored run schema or infer correctness, causal effects or monetary savings.
 

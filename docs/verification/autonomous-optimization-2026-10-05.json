@@ -1,0 +1,327 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-05T00:50:13.857Z",
+  "scope": "Autonomous optimization of the existing jev-harness repository within AGENTS.md boundaries.",
+  "baseRevision": "44a4e3a17013b6458efd4cc2b3e8ca45efae60b8",
+  "toolchain": {
+    "node": "v26.9.0",
+    "pnpm": "10.34.5",
+    "pnpmExecutable": "/private/tmp/jev-harness-pnpm-10.34.5/package/bin/pnpm.cjs",
+    "install": "pnpm install --frozen-lockfile --ignore-workspace --store-dir /private/tmp/jev-harness-pnpm-store"
+  },
+  "changes": [
+    "Bind and replay mock receipts without replacing their reported mock model.",
+    "Keep unavailable no-transport receipts free of fabricated review provenance.",
+    "Reject invalid review thresholds before proposer or transport work.",
+    "Refuse conflicting mock scripts for identical proposals.",
+    "Cancel stalled incoming request-body reads.",
+    "Bound review fetch/body operations even when transports ignore abort; retain actual response byte counts.",
+    "Refuse provider redirects at the fixed egress destination.",
+    "Clean up the CLI process group after completed, failed and interrupted parents.",
+    "Preserve UTF-8 across CLI stdout chunks.",
+    "Gate proposer dispatch after cancellation, retain late evidence and record zero exposure when undispatched.",
+    "Reconnect History chart sizing after filter remounts.",
+    "Scan exact Git filenames and SVG text, fail on unreadable inputs and remove fake-word secret bypasses.",
+    "Reconcile labels chronologically and refuse duplicate logical-run rows/receipts."
+  ],
+  "checks": {
+    "typecheck": {
+      "command": "pnpm typecheck",
+      "exitCode": 0
+    },
+    "tests": {
+      "command": "pnpm test",
+      "exitCode": 0,
+      "tests": 329,
+      "passed": 329,
+      "failed": 0,
+      "logSha256": "1df2e54062650509ba9c47a509c43ae022f608d8ccf2828d778ac80f6cb6c20d"
+    },
+    "build": {
+      "command": "NEXT_TELEMETRY_DISABLED=1 pnpm build",
+      "exitCode": 0,
+      "logSha256": "b1ecfa902abb44a163cc44946ea3f09959142906fc0de4e3c6adc40f411b6129"
+    },
+    "secrets": {
+      "command": "pnpm check:secrets; explicit scan of new verification/test files",
+      "exitCode": 0
+    },
+    "diff": {
+      "command": "git diff --check",
+      "exitCode": 0
+    },
+    "historyBrowser": {
+      "verifier": "scripts/verify-arena-history-browser.mjs",
+      "environment": "Fresh Chromium context against final loopback production build; Arena requests intercepted",
+      "checks": [
+        "root is the agent arena",
+        "other page navigation is removed",
+        "empty history gives a clear next action",
+        "workspace tabs support keyboard navigation",
+        "completed comparison is saved automatically",
+        "saved evidence has a timestamp and provenance banner",
+        "one run is not presented as a trend",
+        "repeated runs accumulate without overwriting previous results",
+        "refresh restores local evidence without a provider request",
+        "history pairs saved rows with plotted observations",
+        "history rows expose labeled paired values to assistive technology",
+        "history input medians include Jev overhead",
+        "review filter removes a chart with no assessed pairs",
+        "restored chart resumes responsive sizing without changing observations",
+        "time series includes routing duration",
+        "opening an earlier run restores its original metrics",
+        "opening history never reruns the agents",
+        "saved-run download preserves timestamp, original evidence and nonexecution",
+        "different tasks have separate histories and trends",
+        "unknown and partial runs remain inspectable",
+        "unknown and partial values do not become zero-valued chart points",
+        "excluded observations are counted explicitly",
+        "history fits 320px",
+        "single arena comparison fits 320px",
+        "history fits 390px",
+        "single arena comparison fits 390px",
+        "history fits 768px",
+        "single arena comparison fits 768px",
+        "history fits 1024px",
+        "single arena comparison fits 1024px",
+        "history fits 1440px",
+        "single arena comparison fits 1440px",
+        "history fits 1920px",
+        "single arena comparison fits 1920px",
+        "history UI synchronizes across tabs",
+        "clear-history cancellation preserves the cache",
+        "confirmed clearing removes cached results",
+        "cleared history stays empty after reload",
+        "old arena URL redirects to the sole interface",
+        "removed examples page is no longer served",
+        "no uncaught browser errors"
+      ],
+      "count": 41,
+      "providerCalls": 0,
+      "liveCliCalls": 0,
+      "humanAccessibilityAcceptance": "not performed"
+    },
+    "sharingHttp": {
+      "verifier": "scripts/check-sharing-http.mjs",
+      "exitCode": 0,
+      "requests": [
+        {
+          "method": "GET",
+          "path": "/"
+        },
+        {
+          "method": "GET",
+          "path": "/opengraph-image"
+        },
+        {
+          "method": "GET",
+          "path": "/opengraph-image"
+        }
+      ],
+      "images": [
+        {
+          "metadata": "og:image",
+          "publicOrigin": "https://jev.guru",
+          "path": "/opengraph-image",
+          "width": 1200,
+          "height": 630,
+          "bytes": 58148
+        },
+        {
+          "metadata": "twitter:image",
+          "publicOrigin": "https://jev.guru",
+          "path": "/opengraph-image",
+          "width": 1200,
+          "height": 630,
+          "bytes": 58148
+        }
+      ]
+    },
+    "mockReviewBench": {
+      "command": "pnpm exec node --import tsx scripts/bench-review.ts",
+      "exitCode": 0,
+      "source": "mock",
+      "fixtures": 25,
+      "baseBadCaught": "7/25",
+      "plusJevBadCaught": "25/25",
+      "plusJevGoodBlocked": "3/25",
+      "plusJevUnavailable": "0/50",
+      "expectedMet": "50/50"
+    },
+    "mockRoutingBench": {
+      "command": "pnpm exec node --import tsx scripts/bench-routing.ts",
+      "exitCode": 0,
+      "source": "mock"
+    },
+    "offlineRoutingExperiment": {
+      "command": "pnpm exec node --import tsx scripts/experiment-routing.ts --format json",
+      "exitCode": 0,
+      "source": "fake",
+      "status": "complete",
+      "trials": 38
+    },
+    "historicalReviewAnalysis": {
+      "checkedBy": "Independent reviewer; regenerated in memory and deep-compared",
+      "unchanged": [
+        "docs/calibration/runs/2026-09-25-review-questions-v4-analysis.json",
+        "docs/calibration/runs/live-2026-09-23-analysis.json"
+      ]
+    },
+    "historicalRoutingReplay": {
+      "checkedBy": "Independent parser reviewer",
+      "artifactsPassed": 15
+    }
+  },
+  "preserved": {
+    "verdicts": [
+      "permit",
+      "proposal_only",
+      "reject",
+      "unavailable"
+    ],
+    "model": "jev-1.13.0",
+    "reviewQuestionSetVersion": 4,
+    "routingQuestionSetVersion": 5,
+    "reviewThreshold": 0.8,
+    "receiptSchemaVersion": 1,
+    "executionApplied": false,
+    "contractAndRoutingSourceUnchanged": true,
+    "fixturesUnchanged": true,
+    "dependenciesAndLockfileUnchanged": true
+  },
+  "completionReview": {
+    "areas": [
+      "pure contract",
+      "audit/benchmark",
+      "routing and experiment replay",
+      "host API/HTTP/CLI",
+      "UI/history/storage",
+      "sharing/repository tooling",
+      "review analysis/CLI"
+    ],
+    "additionalDemonstratedInScopeFixes": []
+  },
+  "limitations": [
+    "Offline and intercepted browser evidence only; no live-provider measurement or calibration claim.",
+    "Cross-browser and human accessibility acceptance were not performed.",
+    "Digests describe local file contents and are not authentication or permission."
+  ],
+  "files": [
+    {
+      "path": ".githooks/pre-commit",
+      "sha256": "1e104847b66b4ed0683dc5759d1b8cdc5571a57d00f1e274a9713ef5335a7511"
+    },
+    {
+      "path": "app/api/arena/route.ts",
+      "sha256": "e51f86b48a801a6948fc089ceed5bf8ba08139bfc89825aa96c7805705fe786d"
+    },
+    {
+      "path": "components/arena-history.tsx",
+      "sha256": "3291b1bcd72695ecbabf311a9890d934234b073ffd9c7152a74793536e311c8f"
+    },
+    {
+      "path": "docs/architecture.md",
+      "sha256": "23e776ea79126004dd9476ec7b2ca7b97772d719aae61a70cdf80ca67222adf9"
+    },
+    {
+      "path": "docs/hardening/05-receipt-binding.md",
+      "sha256": "657e2af230101dc02e609ad0bfeeae55e4d53ac3715d12d70d7d02dc6ef4245b"
+    },
+    {
+      "path": "docs/review-experiment.md",
+      "sha256": "9083840dfb877bc7e3965dd4024281d2577be9e965aa6335d196a45b502903b4"
+    },
+    {
+      "path": "docs/routing-demo.md",
+      "sha256": "2937747ad7bd2fe744919042bcfeb26b28d84e5199ac3448ef920a94fa3621c6"
+    },
+    {
+      "path": "docs/routing.md",
+      "sha256": "4e4f379c7597533a05acfed0dcb5de242c6934c061675e4358f58f7c7c49a540"
+    },
+    {
+      "path": "examples/host/codex.ts",
+      "sha256": "cc7407f1c413ec0d927e164eb220522b3885cf805c0977101cdd1f5a8d37c4b0"
+    },
+    {
+      "path": "examples/host/jev-choice.ts",
+      "sha256": "fb05778ece386bcf081cc27d6b666a9248d346d20274c8bcf5ac2341430cc315"
+    },
+    {
+      "path": "examples/host/live.ts",
+      "sha256": "53715a0e62706de143978b0849b3e59301c2ce6b989c0357e8aa1ccb6310a1ca"
+    },
+    {
+      "path": "examples/host/review-experiment.ts",
+      "sha256": "66f8c4d11db7602b068aaaa17ec52657a824f0b553e770b239654185f2118841"
+    },
+    {
+      "path": "examples/routing/experiment.ts",
+      "sha256": "f1153b556ab87d9a3cb111754d14853496fe35b212db0b533aeb39dfb21ae984"
+    },
+    {
+      "path": "scripts/analyze-review-runs.ts",
+      "sha256": "9f78fc40b8dfc52b9d28745399f5897bf2b942ccc512c6f0c3b341fecf2d8003"
+    },
+    {
+      "path": "scripts/check-secrets.mjs",
+      "sha256": "9a43d31965cec4c15a6a06235cd4119bac3626b0c7e0a8ce47ddb73668bd4301"
+    },
+    {
+      "path": "scripts/verify-arena-history-browser.mjs",
+      "sha256": "19c449b8b055562c520df38269b292b9cc2fec645774593d5e30a1e9720fcc9d"
+    },
+    {
+      "path": "src/audit/receipt.ts",
+      "sha256": "2c133b22671009ac701c0a957b5123b12f6c7cd3a5a546589680f9116b289bd6"
+    },
+    {
+      "path": "src/benchmark/mock.ts",
+      "sha256": "c402cdfcceede31bebdb214f80c68075ec4eff8d01868f3f96a855db763314ca"
+    },
+    {
+      "path": "src/benchmark/run.ts",
+      "sha256": "26d5cdd23135729cc4882838f4cd5c53b640f7774131809d60d6e2097e21294c"
+    },
+    {
+      "path": "tests/analyze-review-runs.test.ts",
+      "sha256": "e3e7d66caa8963a61dae597a006bc34c6b7dd2be5dd332fa728ea78c9f1b010a"
+    },
+    {
+      "path": "tests/arena.test.ts",
+      "sha256": "fdb291eb01c93770ce9a61a57442fcce767d1e35763ea1ecff7c4a3118857544"
+    },
+    {
+      "path": "tests/benchmark-run.test.ts",
+      "sha256": "f804c9f3270e2dbf53dbfecc58e154ebb39b180d059f02d5be53b214d6a7b9c4"
+    },
+    {
+      "path": "tests/live-host.test.ts",
+      "sha256": "b401c04d9dc668166fcea426bdcb4bd0e1e782c89325fc2cdcdd1e9f8773d75b"
+    },
+    {
+      "path": "tests/mock-transport.test.ts",
+      "sha256": "57b46b31e8c77c813d421657429f37f4c20d330e882e68671733fa82a409d682"
+    },
+    {
+      "path": "tests/receipt-binding.test.ts",
+      "sha256": "b56d01c3dbccad34dc31ee290d024f92559ac93df91c0f5b9a185b9b34314265"
+    },
+    {
+      "path": "tests/review-experiment.test.ts",
+      "sha256": "b06755ca73890d59c79d27192afc1ec2f44a4e9da33f74db969884edd100a9e7"
+    },
+    {
+      "path": "tests/routing-experiment.test.ts",
+      "sha256": "07996168b168735d1a2e66fe45ba0b201dee4734023ab993498444168c247932"
+    },
+    {
+      "path": "tests/routing-recovery.test.ts",
+      "sha256": "a11dbf189bfe681f43e771135c53ed14be1de1dfcbc2af9971ce336c510a48c1"
+    },
+    {
+      "path": "tests/secret-check.test.ts",
+      "sha256": "57a5c554248cecd460ba6fb7fc152106b39e289f76959496660da4e15cdfa483"
+    }
+  ]
+}
