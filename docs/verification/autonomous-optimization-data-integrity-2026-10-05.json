@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-05T01:48:29.835Z",
+  "baseRevision": "58d18dd935be224647d7bf3a5ed10f9a238eaee7",
+  "scope": "Further autonomous optimization of offline benchmark and review-analysis data integrity.",
+  "toolchain": {
+    "node": "v26.9.0",
+    "pnpm": "10.34.5"
+  },
+  "corrections": [
+    "Mock probabilities are detached from caller-owned fixtures at transport construction, including later failure callbacks.",
+    "Reviewed receipts require labels in their own logical run before global chronological corrections, including unanswered receipts.",
+    "Empty identities, unknown arms/modes and malformed label metadata cannot disappear through filtering or unanswered skips.",
+    "Tuple keys retain complete fixture identities in conflict reports even when IDs contain separator characters."
+  ],
+  "checks": {
+    "typecheck": {
+      "command": "pnpm typecheck",
+      "exitCode": 0
+    },
+    "tests": {
+      "command": "pnpm test",
+      "passed": 338,
+      "failed": 0,
+      "exitCode": 0,
+      "logSha256": "9fd3040d4c486908710569dc1fa74397abf2aec8cc6111517765df4abcef725d"
+    },
+    "targeted": {
+      "command": "pnpm exec node --import tsx --test tests/mock-transport.test.ts tests/analyze-review-runs.test.ts tests/review-experiment.test.ts",
+      "passed": 42,
+      "exitCode": 0
+    },
+    "build": {
+      "command": "NEXT_TELEMETRY_DISABLED=1 pnpm build",
+      "exitCode": 0,
+      "logSha256": "3e8d311d9358490d6202a260ad79ffd753604a018fdfc391369b423bf5a96643"
+    },
+    "historicalAnalysis": {
+      "command": "Offline in-memory analyze and deepEqual against retained JSON",
+      "verifiedHistoricalAnalyses": [
+        "docs/calibration/runs/2026-09-25-review-questions-v4-analysis.json",
+        "docs/calibration/runs/live-2026-09-23-analysis.json"
+      ],
+      "unchanged": true
+    },
+    "mockBench": {
+      "command": "pnpm exec node --import tsx scripts/bench-review.ts",
+      "exitCode": 0,
+      "source": "mock",
+      "fixtures": 25,
+      "baseBadCaught": "7/25",
+      "plusJevBadCaught": "25/25",
+      "plusJevGoodBlocked": "3/25",
+      "plusJevUnavailable": "0/50",
+      "expectedMet": "50/50"
+    },
+    "secrets": {
+      "command": "pnpm check:secrets and explicit new-record scan",
+      "exitCode": 0
+    },
+    "diff": {
+      "command": "git diff --check",
+      "exitCode": 0
+    }
+  },
+  "preserved": {
+    "verdictsUnchanged": true,
+    "modelPinUnchanged": true,
+    "questionSetsUnchanged": true,
+    "thresholdsUnchanged": true,
+    "fixturesUnchanged": true,
+    "dependenciesUnchanged": true,
+    "proposalExecution": false
+  },
+  "completionReview": "Current implementation and positive/negative regressions reviewed; no further concrete defect identified in the changed data flow.",
+  "limitations": [
+    "No provider calls or live calibration measurement.",
+    "Fixture script probabilities are demonstrations, not measured model quality.",
+    "Hashes describe local file contents and do not grant authenticity or authorization."
+  ],
+  "files": [
+    {
+      "path": "docs/architecture.md",
+      "sha256": "60592c36121f493e098c4101c93dd80d446f62ca5a130f6eafd32e1c7efd96c8"
+    },
+    {
+      "path": "docs/review-experiment.md",
+      "sha256": "54eaed8815c86f9d350172cd4bfb3642c90ff047bfa2c12a877934432b1bec16"
+    },
+    {
+      "path": "scripts/analyze-review-runs.ts",
+      "sha256": "6b22e3034a15f984bb8a942c4288e7adf02fdac7070cab409d4c9ecdea5a7734"
+    },
+    {
+      "path": "src/benchmark/mock.ts",
+      "sha256": "cceedaa8a5e1a28a2421ce25c24ea463a48ccd0dcbc0ef256d06d6a2dbca7679"
+    },
+    {
+      "path": "tests/analyze-review-runs.test.ts",
+      "sha256": "81fdf7a9af400ade58479dff6157a37d556db3730a75e8b5bd65d1c57260e57b"
+    },
+    {
+      "path": "tests/mock-transport.test.ts",
+      "sha256": "7a0c66e0282acadb518bf2e191522135e263b9cd2c457101680f98a217e77b02"
+    }
+  ]
+}

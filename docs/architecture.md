@@ -204,12 +204,20 @@ totals, not measurements. The fixture runner rejects an invalid review threshold
 the proposer or transport. Mock lookup remains keyed by proposal contents;
 conflicting scripts for the same proposal fail at construction instead of
 depending on fixture order. Identical duplicate scripts remain supported.
+Mock scripts are copied when the transport is constructed; later fixture edits
+or transport callbacks cannot change its registered probabilities.
 With no configured transport, the unavailable receipt retains `jev: null` and
 no exchange or fabricated provider provenance.
 
 Offline review analysis reconciles corrections by timestamp instant rather
 than string order, keeps the last input on equal instants, and rejects invalid
 timestamps or duplicate case/mode labels and receipts within a logical run.
+Case metadata and label verdicts are checked before filtering. Every reviewed
+receipt, including an unanswered one, needs a label in its own logical run
+before chronological corrections from other runs are applied. Tuple keys
+preserve fixture identities containing separator characters.
+The [data-integrity verification](verification/autonomous-optimization-data-integrity-2026-10-05.json)
+records the mutation and metadata regressions and unchanged historical analysis.
 
 The `clean-read-before-edit-content-not-in-evidence` fixture pairs a read with an
 unsupported guessed edit: the bad proposal claims an ignored legacy field
