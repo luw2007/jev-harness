@@ -24,11 +24,9 @@ const PATTERNS = [
   ["Bearer literal", /authorization["']?\s*[:=]\s*["']?bearer\s+(?!\$)(?!<)(?!\{)[A-Za-z0-9_\-.=]{20,}/i],
   [".env file staged", null], // handled by path check
 ];
-/** Values that announce themselves as fake. Real keys do not contain these words. */
-const SYNTHETIC = /(test|synthetic|example|placeholder|dummy|fake|unused|sample|your-?key|changeme|redacted|xxx)/i;
 const ENV_PATH = /(^|\/)\.env(\..+)?$/;
 const ENV_ALLOW = /(^|\/)\.env\.example$/;
-const SKIP = /^(pnpm-lock\.yaml|.*\.svg|.*\.png|.*\.jpg|.*\.lock)$/;
+const SKIP = /^(pnpm-lock\.yaml|.*\.png|.*\.jpg|.*\.lock)$/;
 
 function git(...args) {
   return execFileSync("git", args, { encoding: "utf8" });
@@ -36,17 +34,13 @@ function git(...args) {
 
 function targets(argv) {
   if (argv.includes("--staged"))
-    return git("diff", "--cached", "--name-only", "--diff-filter=ACMR").split("\n").filter(Boolean);
-  if (argv.includes("--all")) return git("ls-files").split("\n").filter(Boolean);
+    return git("diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR").split("\0").filter(Boolean);
+  if (argv.includes("--all")) return git("ls-files", "-z").split("\0").filter(Boolean);
   return argv.filter((a) => !a.startsWith("--"));
 }
 
 function staged(path) {
-  try {
-    return execFileSync("git", ["show", `:${path}`], { encoding: "utf8" });
-  } catch {
-    return readFileSync(path, "utf8");
-  }
+  return execFileSync("git", ["show", `:${path}`], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 }
 
 const isStaged = process.argv.includes("--staged");
@@ -61,17 +55,14 @@ for (const path of targets(process.argv.slice(2))) {
   try {
     text = isStaged ? staged(path) : readFileSync(path, "utf8");
   } catch {
+    findings.push(`${JSON.stringify(path)}: could not read input; secret check incomplete`);
     continue;
   }
   const lines = text.split("\n");
   for (const [name, re] of PATTERNS) {
     if (!re) continue;
     lines.forEach((line, i) => {
-      const m = re.exec(line);
-      if (!m) return;
-      // A private-key block is never synthetic; everything else may be a labelled fixture.
-      if (!name.startsWith("Private key") && SYNTHETIC.test(m[0])) return;
-      findings.push(`${path}:${i + 1}: looks like a ${name}`);
+      if (re.test(line)) findings.push(`${JSON.stringify(path)}:${i + 1}: looks like a ${name}`);
     });
   }
 }
@@ -80,7 +71,7 @@ if (findings.length) {
   console.error("\n✖ Possible secret(s) — commit blocked:\n");
   for (const f of findings) console.error("  " + f);
   console.error(
-    "\nIf this is a false positive, fix the text so it is unambiguous (placeholders like <your-key>, $ENV, or op:// references pass).\nNever bypass with --no-verify for a real key: rotate it first.\n",
+    "\nIf this is a false positive, fix the text so it is unambiguous (placeholders like <your-key>, $ENV, or op:// references pass).\nNever bypass the check with --no-verify. Rotate a real key first.\n",
   );
   process.exit(1);
 }
