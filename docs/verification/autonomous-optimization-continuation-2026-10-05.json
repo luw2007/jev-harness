@@ -1,0 +1,253 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-05T01:33:35.584Z",
+  "baseRevision": "b77c7fdd8d044ab9d9195814d9178ea3ce13d004",
+  "scope": "Continuation audit of the committed autonomous optimization; existing project boundaries preserved.",
+  "toolchain": {
+    "node": "v26.9.0",
+    "pnpm": "10.34.5"
+  },
+  "corrections": [
+    {
+      "area": "CLI process lifetime",
+      "issue": "Descendants inheriting stdout/stderr delay close after parent exit.",
+      "change": "Clean the detached process group on parent exit, retaining the close fallback.",
+      "regression": "Fake descendant holding the parent's stdout pipe no longer survives until its natural exit; parent usage and completed status remain intact."
+    },
+    {
+      "area": "CLI cancellation",
+      "issue": "Already-cancelled calls still prepared a workspace and attempted process dispatch.",
+      "change": "Check cancellation before preparation and after asynchronous preparation, before dispatch.",
+      "regression": "Pre-aborted fixture data is not read; cancellation during preparation returns without a CLI dispatch and unknown usage stays null."
+    },
+    {
+      "area": "Secret scanner",
+      "issue": "Empty, misspelled and mixed modes could report clean without scanning.",
+      "change": "Accept one exact mode or an explicit file list; invalid usage exits 2; -- protects option-like filenames.",
+      "regression": "Invalid CLI arguments fail and an option-like filename containing a synthetic pattern is detected."
+    },
+    {
+      "area": "Queued human assessment saves",
+      "issue": "Retention used History IDs captured before acquiring the assessment lock and could delete another tab's newer assessment.",
+      "change": "Read current History inside the write callback; reject removed targets or unreadable History.",
+      "regression": "Synthetic two-tab lock queue preserves newly added assessments, removed targets, unreadable history and unsaved drafts, alongside existing conflict checks."
+    },
+    {
+      "area": "Security documentation",
+      "issue": "Repository overview incorrectly claimed no live provider adapter existed anywhere.",
+      "change": "Distinguish the pure exported package from the optional loopback demo and document strict scanner arguments."
+    }
+  ],
+  "checks": {
+    "typecheck": {
+      "command": "pnpm typecheck",
+      "exitCode": 0
+    },
+    "tests": {
+      "command": "pnpm test",
+      "exitCode": 0,
+      "passed": 334,
+      "failed": 0,
+      "logSha256": "902df35b9af1fcb512878d6b6bb6fdc3044fd3aa5fa24e926f1063edaafcb19b"
+    },
+    "build": {
+      "command": "NEXT_TELEMETRY_DISABLED=1 pnpm build",
+      "exitCode": 0,
+      "logSha256": "f67f0d845f01c4c338a9f05b4a807a384aee420871881c169ba8dd5b26eeeed8"
+    },
+    "secrets": {
+      "command": "pnpm check:secrets; explicit check of this new record",
+      "exitCode": 0
+    },
+    "diff": {
+      "command": "git diff --check",
+      "exitCode": 0
+    },
+    "integrationBrowser": {
+      "verifier": "scripts/verify-arena-integration-browser.mjs",
+      "environment": "Final loopback production build, fresh Chromium context, Arena requests intercepted",
+      "checks": [
+        "End selects and focuses the integration tab",
+        "tab navigation wraps through all three views",
+        "integration hides unrelated run controls and makes no provider request",
+        "shadow adoption is the initial brief",
+        "integration page fits 320px",
+        "integration page fits 390px",
+        "integration page fits 768px",
+        "integration page fits 1440px",
+        "integration page fits 1920px",
+        "prompt contains the actual API, adoption stage, evaluation and rollback steps",
+        "copy transfers the complete agent brief",
+        "clipboard failure offers selected text and an honest recovery message",
+        "prompt overlay fits 320px",
+        "prompt overlay fits 390px",
+        "prompt overlay fits 768px",
+        "prompt overlay fits 1440px",
+        "closing prompt restores focus",
+        "download follows the selected stage without executing or routing",
+        "answers start explicitly unreviewed",
+        "human assessment persists separately from run evidence",
+        "assessment form fits mobile",
+        "refresh restores human assessment without another comparison",
+        "download separates human annotation from derived lessons and execution evidence",
+        "history reports quality coverage and failing pairs alongside performance",
+        "history exposes each human assessment in the row accessible name",
+        "quality filter changes chart eligibility while retaining every saved run",
+        "reopening history retains exactly one lessons and assessment panel",
+        "lessons hand off to integration without leaving an overlay open",
+        "human notes never enter the integration prompt",
+        "storage failure preserves the previous saved assessment",
+        "failed save retains edited ratings and note for retry",
+        "retry saves the retained draft after storage recovers",
+        "explicit clear preserves the draft and permits a fresh save",
+        "assessment changes synchronize from another tab",
+        "external edits preserve a dirty draft and prevent an unnoticed overwrite",
+        "explicit reload resolves the assessment conflict",
+        "a queued stale save preserves the newer stored assessment and the unsaved draft",
+        "a rejected queued save never reports success and requires conflict resolution",
+        "queued assessment saves retain reviews for runs added while waiting for the lock",
+        "unreadable History prevents queued pruning and preserves existing assessments and the draft",
+        "queued saves reject removed runs while preserving stored assessments and the unsaved draft",
+        "a failed lane cannot be marked Meets task through the UI",
+        "clearing history also removes human annotations",
+        "clearing annotations and history preserves the manual key override",
+        "integration and assessment flows produce no uncaught browser errors"
+      ],
+      "count": 45,
+      "providerCalls": 0,
+      "liveCliCalls": 0,
+      "humanAccessibilityAcceptance": "not performed"
+    },
+    "historyBrowser": {
+      "verifier": "scripts/verify-arena-history-browser.mjs",
+      "environment": "Final loopback production build, fresh Chromium context, Arena requests intercepted",
+      "checks": [
+        "root is the agent arena",
+        "other page navigation is removed",
+        "empty history gives a clear next action",
+        "workspace tabs support keyboard navigation",
+        "completed comparison is saved automatically",
+        "saved evidence has a timestamp and provenance banner",
+        "one run is not presented as a trend",
+        "repeated runs accumulate without overwriting previous results",
+        "refresh restores local evidence without a provider request",
+        "history pairs saved rows with plotted observations",
+        "history rows expose labeled paired values to assistive technology",
+        "history input medians include Jev overhead",
+        "review filter removes a chart with no assessed pairs",
+        "restored chart resumes responsive sizing without changing observations",
+        "time series includes routing duration",
+        "opening an earlier run restores its original metrics",
+        "opening history never reruns the agents",
+        "saved-run download preserves timestamp, original evidence and nonexecution",
+        "different tasks have separate histories and trends",
+        "unknown and partial runs remain inspectable",
+        "unknown and partial values do not become zero-valued chart points",
+        "excluded observations are counted explicitly",
+        "history fits 320px",
+        "single arena comparison fits 320px",
+        "history fits 390px",
+        "single arena comparison fits 390px",
+        "history fits 768px",
+        "single arena comparison fits 768px",
+        "history fits 1024px",
+        "single arena comparison fits 1024px",
+        "history fits 1440px",
+        "single arena comparison fits 1440px",
+        "history fits 1920px",
+        "single arena comparison fits 1920px",
+        "history UI synchronizes across tabs",
+        "clear-history cancellation preserves the cache",
+        "confirmed clearing removes cached results",
+        "cleared history stays empty after reload",
+        "old arena URL redirects to the sole interface",
+        "removed examples page is no longer served",
+        "no uncaught browser errors"
+      ],
+      "count": 41,
+      "providerCalls": 0,
+      "liveCliCalls": 0,
+      "humanAccessibilityAcceptance": "not performed"
+    },
+    "sharingHttp": {
+      "verifier": "scripts/check-sharing-http.mjs",
+      "exitCode": 0,
+      "scope": "Local rendered metadata and both generated PNG responses"
+    },
+    "reviewBench": {
+      "command": "pnpm exec node --import tsx scripts/bench-review.ts",
+      "exitCode": 0,
+      "source": "mock",
+      "fixtures": 25,
+      "baseBadCaught": "7/25",
+      "plusJevBadCaught": "25/25",
+      "plusJevGoodBlocked": "3/25",
+      "plusJevUnavailable": "0/50",
+      "expectedMet": "50/50"
+    }
+  },
+  "preserved": {
+    "pureSourceUnchanged": true,
+    "questionSetsUnchanged": true,
+    "modelPinUnchanged": true,
+    "thresholdsUnchanged": true,
+    "fixturesUnchanged": true,
+    "dependenciesUnchanged": true,
+    "proposalExecution": false
+  },
+  "audit": {
+    "furtherReproducibleDefectsFoundInReviewedChanges": [],
+    "review": "Direct current-code review and negative/positive regression checks; no subagents used in this continuation."
+  },
+  "limitations": [
+    "No live-provider measurement or calibration claim.",
+    "Browser verification uses Chromium; human accessibility acceptance was not performed.",
+    "Local content hashes are not authentication or authorization."
+  ],
+  "files": [
+    {
+      "path": "SECURITY.md",
+      "sha256": "767876781fe6b6a1d68cc4183b2fd2ea982384408f5365288b48ecd691ca7337"
+    },
+    {
+      "path": "components/arena.tsx",
+      "sha256": "1b01b727734aa963e456f73c3a0f60eda5702ce5eb3baf99132a3c046dd01eb9"
+    },
+    {
+      "path": "components/use-assessments.ts",
+      "sha256": "07522fb870629f54e15e3f12c124bd91072974ec7accb5edbf47b7427833b1be"
+    },
+    {
+      "path": "docs/architecture.md",
+      "sha256": "a74298748913ecc66124a1f32ed190f5328f024d76f532a22fb9de8e004f17d3"
+    },
+    {
+      "path": "docs/integration.md",
+      "sha256": "47cc16a3c663914d208ec7dc2e7085c8f3cfef632b31a2b220d1ed29f7c9750c"
+    },
+    {
+      "path": "docs/routing-demo.md",
+      "sha256": "b4c14f697d0f803509e5182cf152d16e8429f45176074ea09f9fc7626349d821"
+    },
+    {
+      "path": "examples/host/codex.ts",
+      "sha256": "b2c551b9a9f022351f0ea2e28a435a51a53f88e63384adfbeac91fed1ff85164"
+    },
+    {
+      "path": "scripts/check-secrets.mjs",
+      "sha256": "5f24c0980db22170ba36113d3b82b953de2a3e267b11c2363ae95ba1d65fd284"
+    },
+    {
+      "path": "scripts/verify-arena-integration-browser.mjs",
+      "sha256": "32d7d0ac66cbfbc09fe043cf27e6dd7dedac511f59dcf837312d5315f994ced7"
+    },
+    {
+      "path": "tests/arena.test.ts",
+      "sha256": "3b2d5d5f84a429511966d363c3f652473689bc7f75dbbf8dc87b526d7c24bffd"
+    },
+    {
+      "path": "tests/secret-check.test.ts",
+      "sha256": "38d5770c01fa6fa4d0a7262897b057e4da1d1ca93f6b03241839943201502c91"
+    }
+  ]
+}

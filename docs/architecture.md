@@ -264,6 +264,10 @@ response reads share the deadline even when an injected transport ignores its
 signal; byte telemetry counts received bytes. Provider requests refuse redirects
 to keep their fixed egress destination. CLI runs finish process-group cleanup
 even if the parent exits before its descendants.
+Cleanup starts on parent exit, before waiting for descendant-held stdout or
+stderr pipes to close.
+Pre-aborted calls skip CLI preparation, and cancellation during preparation is
+checked again before process dispatch.
 Streaming UTF-8 decoding preserves answers split across stdout chunks. History
 chart sizing reconnects when its assessment filter removes and recreates the
 figure.
@@ -276,6 +280,9 @@ their usage and trace but remain cancelled for scoring.
 The [offline optimization verification](verification/autonomous-optimization-2026-10-05.json)
 records regression tests, production browser checks and preserved historical
 results for these corrections.
+The [continuation verification](verification/autonomous-optimization-continuation-2026-10-05.json)
+records inherited-pipe cleanup, cancellation before CLI dispatch, strict scanner
+arguments and current-History retention for queued assessments.
 
 `examples/arena/lessons.ts` derives versioned observations and testable recommendations from a settled `ArenaRun`. It uses reported scalar metrics, routing outcome and both tool traces, never treats an answer or rationale as instructions, and makes no I/O or policy changes. Paired input/time deltas require a complete run and complete lanes; integrated totals include Jev. Invalid or missing numbers remain unknown. Rejected calls, absent tool evidence and truncated traces in either lane precede performance tuning. The UI derives lessons for current or reopened snapshots and attaches the analysis version and source run id to downloads; it does not change the stored run schema or infer correctness, causal effects or monetary savings.
 
@@ -283,6 +290,10 @@ results for these corrections.
 `prepareToolContext` is an additive routing composition API, not a runtime or dispatcher. It snapshots the requested mode and previous context before awaiting `routeTools` once, then computes full and lean contexts from that same previous state. The explicitly requested shadow mode selects full context even after failed routing; lean selects only routed schemas. Cancellation leaves active context empty in either mode while retaining comparison evidence. Hosts must consume `context`, discard stale handoffs and independently enforce dispatch policy. The standalone synthetic integration example demonstrates outcomes and availability changes without provider or tool calls.
 
 Human answer assessments use a separate versioned, bounded browser store keyed by run ID. They never alter `ArenaRun`, Jev evidence or policy. History filters only its chart subset, preserving every run in the list and reporting review coverage; passing annotations do not establish correctness. Failed writes retain prior data and edited drafts; conflicting external edits require an explicit reload. Comparison downloads label annotations as human-supplied. The static integration prompt contains no run content, credential or annotation. See [host adoption and measurement](integration.md).
+
+Assessment saves read current History IDs after acquiring the assessment lock,
+preserving reviews for newly retained runs and rejecting removed runs. Unreadable
+History withholds the write instead of pruning from stale UI state.
 
 `assembleToolBundle` is an optional pure handoff helper for host-declared tool
 dependencies. It leaves Jev's receipt and selected roots unchanged, expands a
