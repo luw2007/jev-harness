@@ -1,8 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { ARENA_CASES } from "../examples/arena/cases";
-import { ARENA_SETUP_VERSION, createRun, parseHistory, retainRuns, saveRun, readHistory, clearHistory, performanceSeries, type ArenaRun, HISTORY_KEY, MAX_RUNS, MAX_BYTES } from "../examples/arena/history";
+import { ARENA_SETUP_VERSION, createRun, parseHistory, retainRuns, saveRun, readHistory, clearHistory, performanceSeries, runMetrics, type ArenaRun, HISTORY_KEY, MAX_RUNS, MAX_BYTES } from "../examples/arena/history";
 import { routeTools } from "../src/routing";
+import { readAssessments, saveAssessment } from "../examples/arena/assessments";
 import * as demo from "../examples/routing/scenarios";
 
 const { DEMO_CATALOG, DEMO_POLICY, SCENARIOS, scenarioRouter } = demo;
@@ -100,6 +101,59 @@ test("save merges existing runs, survives reload and clears only history", () =>
   assert.equal(storage.getItem("unrelated"), "retained");
 });
 
+test("equivalent same-ID saves and duplicate reads preserve original evidence despite object key order", async () => {
+  const entry = run();
+  entry.fixture.files["src/other.ts"] = "export const other = 0;\n";
+  entry.receipt = await routeTools(DEMO_CATALOG, { intent: fixture.task, availableIds: DEMO_CATALOG.map(t => t.id) }, DEMO_POLICY, scenarioRouter(SCENARIOS[0]!));
+  const reverseKeys = (value: unknown): unknown => Array.isArray(value) ? value.map(reverseKeys)
+    : value && typeof value === "object" ? Object.fromEntries(Object.entries(value).reverse().map(([key, item]) => [key, reverseKeys(item)])) : value;
+  const reordered = reverseKeys(entry) as ArenaRun;
+  assert.notEqual(JSON.stringify(entry), JSON.stringify(reordered));
+  const storage = new Storage(); saveRun(storage, entry);
+  const before = storage.getItem(HISTORY_KEY);
+  storage.setItem = () => { throw Error("An identical save needs no write"); };
+  assert.equal(saveRun(storage, reordered).saved, true);
+  assert.equal(storage.getItem(HISTORY_KEY), before);
+  assert.deepEqual(readHistory(storage).runs, [entry]);
+  const duplicate = parseHistory(JSON.stringify({ version: 1, runs: [entry, reordered, entry] }));
+  assert.equal(duplicate.error, null);
+  assert.deepEqual(duplicate.runs, [entry]);
+});
+
+test("conflicting same-ID saves preserve the original run and its human assessment", () => {
+  const storage = new Storage(), original = run(); original.lanes.baseline!.tools = ["read_file", "propose_patch"]; saveRun(storage, original);
+  const assessment = { runId: original.id, baseline: "pass" as const, integrated: "pass" as const, note: "Assessment of the original task", updatedAt: "2026-09-22T00:00:03Z" };
+  assert.equal(saveAssessment(storage, assessment, [original.id], undefined).saved, true);
+  const before = [...storage.data];
+  for (const change of [
+    (entry: ArenaRun) => { entry.fixture.task = "A different synthetic task"; },
+    (entry: ArenaRun) => { entry.lanes.baseline!.result.inputTokens = 5; },
+    (entry: ArenaRun) => { entry.lanes.baseline!.result.answer = "Different synthetic evidence"; },
+    (entry: ArenaRun) => { entry.lanes.baseline!.tools = ["propose_patch", "read_file"]; },
+  ]) {
+    const replacement = structuredClone(original); change(replacement);
+    const result = saveRun(storage, replacement);
+    assert.equal(result.saved, false);
+    assert.match(result.error!, /Different evidence.*run ID/);
+    assert.deepEqual(result.runs, [original]);
+    assert.deepEqual([...storage.data], before);
+    assert.deepEqual(readAssessments(storage).entries, [assessment]);
+  }
+});
+
+test("conflicting duplicate IDs are excluded visibly without choosing evidence for an assessment", () => {
+  const original = run(), replacement = run(); replacement.fixture.task = "A different synthetic task";
+  const unaffected = run("unaffected");
+  for (const entries of [[original, replacement, original, unaffected], [replacement, original, unaffected]]) {
+    const storage = new Storage(), raw = JSON.stringify({ version: 1, runs: entries }); storage.setItem(HISTORY_KEY, raw);
+    const parsed = readHistory(storage);
+    assert.match(parsed.error!, /conflicting IDs/);
+    assert.deepEqual(parsed.runs, [unaffected]);
+    assert.equal(saveRun(storage, run("new")).saved, false);
+    assert.equal(storage.getItem(HISTORY_KEY), raw);
+  }
+});
+
 test("quota and unavailable storage are visible without destroying the previous cache", () => {
   const storage = new Storage(); saveRun(storage, run());
   const prior = storage.getItem(HISTORY_KEY);
@@ -135,6 +189,18 @@ test("time series uses complete same-fixture same-setup pairs and includes Jev o
   assert.equal(performanceSeries([first], fixture, "input").points[0]!.baseline, 100);
 });
 
+test("overflowed integrated input remains unknown without losing its saved per-provider values", () => {
+  const entry = run("overflow");
+  entry.lanes.integrated!.result.inputTokens = Number.MAX_SAFE_INTEGER;
+  entry.jevUsage!.inputTokens = Number.MAX_SAFE_INTEGER;
+  const parsed = parseHistory(JSON.stringify({ version: 1, runs: [entry] }));
+  assert.equal(parsed.error, null);
+  assert.equal(parsed.runs.length, 1);
+  assert.equal(parsed.runs[0]!.lanes.integrated!.result.inputTokens, Number.MAX_SAFE_INTEGER);
+  assert.equal(runMetrics(parsed.runs[0]!, "input").integrated, null);
+  assert.equal(performanceSeries(parsed.runs, fixture, "input").points.length, 0);
+});
+
 test("corrupt measurement counts and durations never enter a trend", () => {
   for (const value of [1e308, .5, -1]) {
     const entry = run(); entry.lanes.baseline!.result.inputTokens = value;
@@ -144,6 +210,47 @@ test("corrupt measurement counts and durations never enter a trend", () => {
   assert.equal(parseHistory(JSON.stringify({ version: 1, runs: [entry] })).runs.length, 0);
   entry.lanes.integrated!.result.durationMs = 1e308;
   assert.equal(performanceSeries([entry], fixture, "duration").points.length, 0);
+});
+
+test("contradictory cached input and fixture trace accounting are excluded from saved evidence", () => {
+  const changes = [
+    { cachedInputTokens: 101 },
+    { toolCallCount: 0 },
+    { toolCallCount: 2 },
+    { traceTruncated: true },
+    { toolCallCount: 101, traceTruncated: true },
+    { toolCallCount: 100, traceTruncated: true, toolCalls: Array.from({ length: 100 }, () => lane.result.toolCalls[0]!) },
+    { toolCallCount: 101, toolCalls: Array.from({ length: 100 }, () => lane.result.toolCalls[0]!) },
+  ];
+  for (const change of changes) {
+    const entry = run("contradictory");
+    Object.assign(entry.lanes.baseline!.result, change);
+    const parsed = parseHistory(JSON.stringify({ version: 1, runs: [entry] }));
+    assert.deepEqual(parsed.runs, []);
+    assert.ok(parsed.error);
+    assert.equal(performanceSeries(parsed.runs, fixture, "input").points.length, 0);
+    const storage = new Storage(); saveRun(storage, run("original"));
+    const previous = storage.getItem(HISTORY_KEY);
+    assert.equal(saveRun(storage, entry).saved, false);
+    assert.equal(storage.getItem(HISTORY_KEY), previous);
+  }
+});
+
+test("history retains consistent trace boundaries and independently missing input metrics", () => {
+  const variants = [
+    { inputTokens: 0, cachedInputTokens: 0, toolCallCount: 0, toolCalls: [] },
+    { cachedInputTokens: 100 },
+    { inputTokens: null, cachedInputTokens: 100 },
+    { cachedInputTokens: null },
+    { toolCallCount: 100, toolCalls: Array.from({ length: 100 }, () => lane.result.toolCalls[0]!) },
+    { toolCallCount: 101, traceTruncated: true, toolCalls: Array.from({ length: 100 }, () => lane.result.toolCalls[0]!) },
+  ];
+  for (const change of variants) {
+    const entry = run(); Object.assign(entry.lanes.baseline!.result, change);
+    const parsed = parseHistory(JSON.stringify({ version: 1, runs: [entry] }));
+    assert.equal(parsed.error, null);
+    assert.deepEqual(parsed.runs, [entry]);
+  }
 });
 
 test("unreadable history is preserved until the user explicitly clears it", () => {

@@ -8,10 +8,11 @@ const row = (overrides: Partial<EvaluationRow> = {}): EvaluationRow => ({
 });
 
 test("synthetic repeated cases keep pipeline, provider, and unique semantic counts separate", () => {
+  // Hypothetical provider dispatch uses Jev provenance; these arithmetic examples make no provider calls.
   const rows: EvaluationRow[] = [];
   for (let run = 0; run < 4; run++) for (let i = 0; i < 40; i++) {
     const structural = i < 7;
-    rows.push(row({ runId: `r${run}`, caseId: `c${i}`, validationPassed: !structural,
+    rows.push(row({ source: "jev", runId: `r${run}`, caseId: `c${i}`, validationPassed: !structural,
       label: i < 20 ? "unacceptable" : i < 38 ? "acceptable" : "clarification_required",
       verdict: structural ? "reject" : i >= 20 && i < 38 ? "permit" : "proposal_only",
       providerCalls: structural ? [] : ["answered"] }));
@@ -29,15 +30,32 @@ test("synthetic repeated cases keep pipeline, provider, and unique semantic coun
 
 test("retries and unavailable pipeline outcomes use different denominators", () => {
   const result = summarizeEvaluation([
-    row({ providerCalls: ["unavailable", "answered"] }),
-    row({ caseId: "c2", verdict: "unavailable", providerCalls: ["unavailable"] }),
-    row({ caseId: "c3", verdict: "unavailable", providerCalls: [] }),
+    row({ source: "jev", providerCalls: ["unavailable", "answered"] }),
+    row({ source: "jev", caseId: "c2", verdict: "unavailable", providerCalls: ["unavailable"] }),
+    row({ source: "jev", caseId: "c3", verdict: "unavailable", providerCalls: [] }),
   ]).byMode.plus_jev;
   assert.equal(result.pipelineCases, 3);
   assert.equal(result.providerCallAttempts, 3);
   assert.equal(result.providerCallFailures, 2);
   assert.equal(result.unavailableCases, 2);
   assert.equal(result.distinctSemanticBadCases, 1);
+});
+
+test("mock review sequences retain semantic outcomes without physical provider attempts or failures", () => {
+  const result = summarizeEvaluation([
+    row({ providerCalls: ["unavailable", "answered"] }),
+    row({ caseId: "c2", verdict: "unavailable", providerCalls: ["unavailable"] }),
+    row({ caseId: "c3", label: "acceptable", verdict: "permit", providerCalls: ["answered"] }),
+  ]);
+  assert.equal(result.source, "mock");
+  assert.equal(result.byMode.plus_jev.pipelineCases, 3);
+  assert.equal(result.byMode.plus_jev.providerCallAttempts, 0);
+  assert.equal(result.byMode.plus_jev.providerCallFailures, 0);
+  assert.equal(result.byMode.plus_jev.unavailableCases, 1);
+  assert.equal(result.byMode.plus_jev.semanticBadObservations, 1);
+  assert.equal(result.byMode.plus_jev.distinctSemanticBadCases, 1);
+  assert.equal(result.byMode.plus_jev.acceptableProposalsHeld, 0);
+  assert.throws(() => summarizeEvaluation([row({ providerCalls: [] })]), /disagree/);
 });
 
 test("base results cannot masquerade as reviewed semantic coverage", () => {

@@ -14,7 +14,7 @@ export interface EvaluationRow {
   label: EvaluationLabel;
   validationPassed: boolean;
   verdict: ReviewVerdict;
-  /** One entry per actual attempt. Answered means usable review answers. */
+  /** One entry per review attempt; mock sequences describe scripted attempts. Answered means usable review answers. */
   providerCalls: readonly ("answered" | "unavailable")[];
 }
 export interface ModeCounts {
@@ -94,8 +94,10 @@ export function summarizeEvaluation(rows: readonly EvaluationRow[]): EvaluationS
     const count = byMode[row.mode];
     count.pipelineCases++;
     if (!row.validationPassed) count.validationRejected++;
-    count.providerCallAttempts += row.providerCalls.length;
-    count.providerCallFailures += row.providerCalls.filter(v => v === "unavailable").length;
+    if (row.source === "jev") {
+      count.providerCallAttempts += row.providerCalls.length;
+      count.providerCallFailures += row.providerCalls.filter(v => v === "unavailable").length;
+    }
     if (row.verdict === "unavailable") count.unavailableCases++;
     if (row.mode === "plus_jev" && row.validationPassed && row.label === "unacceptable" && row.providerCalls.at(-1) === "answered") {
       count.semanticBadObservations++;

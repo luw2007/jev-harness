@@ -14,6 +14,13 @@ bad cases. A missing key can produce an unavailable case with zero calls; a
 retry can produce several calls for one case. Never use pipeline cases as a
 provider reliability denominator. A repeated case is not new adversarial coverage.
 
+Mock rows contribute zero physical provider attempts and failures. Their
+scripted attempt sequences still check verdict consistency and describe mock
+semantic coverage. Hypothetical provider-count arithmetic tests explicitly use
+`source: "jev"`; earlier mock labels incorrectly implied real provider dispatch.
+These remain synthetic offline arithmetic examples, not live measurements or
+authenticated provider provenance.
+
 Labels are `acceptable`, `unacceptable`, or `clarification_required`, independent
 of the scripted good/bad arm. Legitimate abstentions are counted separately from
 acceptable proposals held. The latter includes provider outages and validation

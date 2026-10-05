@@ -15,7 +15,7 @@ import { arenaPrompt, runCodex, type ToolCall } from "../host/codex.js";
 import { FIXTURE_HOST_REVISION } from "../host/fixture-tools.mjs";
 import { parseFixtureHostRevision, parseFixtureToolCalls } from "../host/fixture-records.js";
 import { jevChoiceBody } from "../host/jev-choice.js";
-import { attemptTotals, measureLedger, parseMeasurement, parseRoutingTransport, type JevMeasurement, type RoutingDiagnostic, type JevAttemptLedger, type RoutingTransport } from "./measurement.js";
+import { attemptTotals, measureLedger, parseMeasurement, parseRoutingTransport, sumCounts, type JevMeasurement, type RoutingDiagnostic, type JevAttemptLedger, type RoutingTransport } from "./measurement.js";
 import { EXPERIMENT_CATALOG, EXPERIMENT_CATALOGS, EXPERIMENT_TASKS, FAKE_PROPOSER_SCRIPT, EXPERIMENT_MOCKS, SIZE_TIERS, TIER_AVAILABLE_IDS, type ExperimentLabel, type ExperimentTask, type SizeTier } from "./experiment-tasks.js";
 
 export const EXPERIMENT_SCHEMA_VERSION = 1;
@@ -255,8 +255,8 @@ const median = (values: readonly number[]) => {
 /** Reported input/output for a whole trial (proposer + Jev), or null if any called component did not report. */
 export function reportedTotals(trial: Trial) {
   const parts = [trial.proposer ? trial.proposer.reported : { input: 0, output: 0 }, trial.routing ? trial.routing.reported ?? { input: null, output: null } : { input: 0, output: 0 }];
-  const input = parts.every(p => p.input !== null) ? sum(parts.map(p => p.input!)) : null;
-  const output = parts.every(p => p.output !== null) ? sum(parts.map(p => p.output!)) : null;
+  const input = parts.every(p => p.input !== null) ? sumCounts(parts.map(p => p.input!)) : null;
+  const output = parts.every(p => p.output !== null) ? sumCounts(parts.map(p => p.output!)) : null;
   return { input, output };
 }
 
@@ -360,6 +360,7 @@ export function buildArtifact(trials: Trial[], meta: { source: "fake" | "live"; 
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
+const diagnosticEntries = (value: unknown) => isObj(value) ? Object.entries(value).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0) : value;
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0;
 const count = (v: unknown): v is number => finite(v) && Number.isSafeInteger(v);
 const nullableCount = (v: unknown) => v === null || count(v);
@@ -473,7 +474,7 @@ export async function parseExperimentArtifact(raw: unknown): Promise<ExperimentA
         const measured = parseMeasurement(measureLedger(typed, routing.latencyMs as number | null), routing.optionIds, evidence === null && a.status === "cancelled" ? undefined : evidence as RoutingEvidence | null);
         if (typed.recovery !== transport.recovery || typed.maxAttempts !== transport.maxAttempts || typed.timeoutMs !== transport.timeoutMs || !typed.complete || !sameIds(typed.optionIds, routing.optionIds)) fail(`trial ${i} transport configuration`);
         const totals = attemptTotals(typed);
-        if (routing.providerRequests !== totals.providerRequests || routing.observedProviderRequests !== totals.observedProviderRequests || !isObj(routing.reported) || routing.reported.input !== measured.inputTokens || routing.reported.output !== measured.outputTokens || JSON.stringify(routing.diagnostic) !== JSON.stringify(measured.diagnostic)) fail(`trial ${i} attempt accounting`);
+        if (routing.providerRequests !== totals.providerRequests || routing.observedProviderRequests !== totals.observedProviderRequests || !isObj(routing.reported) || routing.reported.input !== measured.inputTokens || routing.reported.output !== measured.outputTokens || JSON.stringify(diagnosticEntries(routing.diagnostic)) !== JSON.stringify(diagnosticEntries(measured.diagnostic))) fail(`trial ${i} attempt accounting`);
         const request: RoutingRequest = { model: JEV_MODEL, questionSetVersion, intent: task.intent, untrustedDataNote: ROUTING_UNTRUSTED_DATA_NOTE, options: routing.optionIds.map(id => id === CLARIFICATION_ID ? { id, kind: "fallback", description: "Ask for clarification when the task is ambiguous or none of the available tools fits." } : { ...catalog.find(t => t.id === id)! }) };
         const requestBody = jevChoiceBody(request);
         if (typed.attempts.some(attempt => attempt.requestBytes !== bytes(requestBody)) || t.proxies.jevRequestTokens !== proxyTokens(requestBody) || t.proxies.jevPhysicalRequestTokens !== proxyTokens(requestBody) * totals.observedProviderRequests) fail(`trial ${i} physical request proxies`);

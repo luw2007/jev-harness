@@ -2,6 +2,7 @@ import { RoutingAttempts } from "./routing-attempts";
 import { useEffect, useState } from "react";
 import { DetailPanel } from "./detail-panel";
 import { DEMO_CATALOG } from "../examples/routing/scenarios";
+import { sumCounts } from "../examples/routing/measurement";
 import type { CliPhase, CliResult } from "../examples/host/codex";
 import type { RouterMeasurement } from "../examples/routing/live-client";
 import type { RoutingReceipt } from "../src/routing";
@@ -53,7 +54,7 @@ export function ArenaResults({ lanes, receipt, jevUsage, pending, progress, fini
   const integratedTools = integrated?.tools ?? progress.integrated?.tools;
   const hasPrerequisites = receipt && integratedTools?.some(id => !receipt.selectedIds.includes(id));
   const ready = base?.result.status === "completed" && integrated?.result.status === "completed";
-  const integratedInput = integrated?.result.inputTokens != null && jevUsage?.inputTokens != null ? integrated.result.inputTokens + jevUsage.inputTokens : null;
+  const integratedInput = integrated?.result.inputTokens != null && jevUsage?.inputTokens != null ? sumCounts([integrated.result.inputTokens, jevUsage.inputTokens]) : null;
   const baseInput = base?.result.inputTokens ?? null;
   const delta = ready && baseInput != null && integratedInput != null ? integratedInput - baseInput : null;
   const integratedTime = integrated && jevUsage?.latencyMs != null ? integrated.result.durationMs + jevUsage.latencyMs : null;
@@ -104,7 +105,7 @@ export function ArenaResults({ lanes, receipt, jevUsage, pending, progress, fini
 export function ArenaAccounting({ lanes, jevUsage }: { lanes: Partial<Record<"baseline" | "integrated", ArenaLane>>; jevUsage: RouterMeasurement | null }) {
   const base = lanes.baseline, integrated = lanes.integrated;
   const baseInput = base?.result.inputTokens ?? null;
-  const integratedInput = integrated?.result.inputTokens != null && jevUsage?.inputTokens != null ? integrated.result.inputTokens + jevUsage.inputTokens : null;
+  const integratedInput = integrated?.result.inputTokens != null && jevUsage?.inputTokens != null ? sumCounts([integrated.result.inputTokens, jevUsage.inputTokens]) : null;
   const scale = Math.max(baseInput ?? 0, integratedInput ?? 0, 1);
   if (!base && !integrated) return <><p className="inspector-empty">No CLI usage returned. Jev whole-call input: {number(jevUsage?.inputTokens)}; output: {number(jevUsage?.outputTokens)}. Routing failure usage remains part of this run.</p><RoutingAttempts measurement={jevUsage} /></>;
   return <><div className="accounting-chart" aria-label="Reported input tokens including router overhead">{([['Without Jev', baseInput, 0], ['With Jev', integratedInput, jevUsage?.inputTokens ?? 0]] as const).map(([label, total, router]) => <div className="accounting-row" key={label}><div><span>{label}</span><strong>{number(total)} tokens</strong></div><div className="token-track" aria-hidden="true">{total != null && <><span className="cli-bar" style={{ width: `${Math.max(0, total - router) / scale * 100}%` }} /><span className="router-bar" style={{ width: `${router / scale * 100}%` }} /></>}</div></div>)}<p className="hint chart-key"><span>CLI input</span><span>Jev input</span></p></div>

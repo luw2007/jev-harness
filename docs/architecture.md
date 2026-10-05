@@ -191,6 +191,10 @@ iterators or getters. `prepareProposerInput` whitelists and copies
 only task/files/evidence before a `BlindedProposer` sees them. The original
 labeled `Proposer` remains a scripted-fixture interface, not a blinded study
 contract. These helpers do not run a benchmark or authenticate labels.
+Mock attempt sequences still support verdict consistency and scripted semantic
+coverage, but physical provider-attempt and failure counters remain zero for
+mock rows. Only rows labeled `jev` contribute to those physical counters; the
+source label remains an evaluator assertion, not proof of transport provenance.
 
 The extracted fixture bench lives beside them: `fixtures.ts` (zod fixture
 schema), `proposer.ts` (scripted `FixtureProposer`), `mock.ts` (labeled mock
@@ -216,6 +220,9 @@ Case metadata and label verdicts are checked before filtering. Every reviewed
 receipt, including an unanswered one, needs a label in its own logical run
 before chronological corrections from other runs are applied. Tuple keys
 preserve fixture identities containing separator characters.
+Recorded answer triples must match the existing Noul probability derivation
+before entering distributions or variance; malformed triples fail analysis
+instead of appearing as favorable semantic evidence.
 The [data-integrity verification](verification/autonomous-optimization-data-integrity-2026-10-05.json)
 records the mutation and metadata regressions and unchanged historical analysis.
 
@@ -276,6 +283,9 @@ Cleanup starts on parent exit, before waiting for descendant-held stdout or
 stderr pipes to close.
 Pre-aborted calls skip CLI preparation, and cancellation during preparation is
 checked again before process dispatch.
+Review-request serialization completes before recording physical dispatch.
+An impossible CLI cached-token subtotal becomes unknown while independently
+valid input/output measurements and the result status remain intact.
 Streaming UTF-8 decoding preserves answers split across stdout chunks. History
 chart sizing reconnects when its assessment filter removes and recreates the
 figure.
@@ -302,6 +312,23 @@ Human answer assessments use a separate versioned, bounded browser store keyed b
 Assessment saves read current History IDs after acquiring the assessment lock,
 preserving reviews for newly retained runs and rejecting removed runs. Unreadable
 History withholds the write instead of pruning from stale UI state.
+Run IDs bind immutable saved evidence: equivalent saves are idempotent, but
+conflicting replacements or duplicate IDs cannot inherit an earlier assessment.
+Saved lane metrics must agree with retained trace counts and cache subtotals.
+Session usage validates integer counts and bounded latency, strips unknown
+metadata before writing, and returns detached observations to readers.
+Diagnostic field order does not change ledger evidence; its known primitive
+values are compared independently of object-key order, while option arrays
+retain their ordered meaning.
+Checked integer aggregation makes an unrepresentable token total unknown
+without altering per-attempt data or the routing outcome. Usage summaries and
+combined CLI/Jev metrics use the same rule; no price is inferred from an unknown
+subtotal.
+The supported range is nonnegative safe integers. Required request-byte totals
+outside that range fail explicitly; their schema remains non-nullable.
+The [accounting and storage verification](verification/autonomous-optimization-accounting-2026-10-05.json)
+records numeric boundaries, immutable run IDs, source-aware counts and browser
+regressions for these changes.
 
 `assembleToolBundle` is an optional pure handoff helper for host-declared tool
 dependencies. It leaves Jev's receipt and selected roots unchanged, expands a

@@ -30,6 +30,14 @@ Primary details open in a modal drawer over the content: **How the comparison wo
 
 The input-only estimate uses the [public $42/billion input-token price](https://typesafe.ai/), checked September 22, 2026. It excludes unknown calls, output pricing, cache discounts and account-specific prices. No account balance, plan or quota is invented.
 
+Usage entries retain only validated scalar fields and sanitized measurements.
+Token counts must be nonnegative safe integers; unknown metrics remain null and
+fractional latency remains supported. Stored and in-memory observations are
+detached from callers, so later edits cannot rewrite a recorded observation.
+If a sum of valid token counts exceeds the supported integer range, that aggregate
+remains unknown while individual counts and independent metrics remain visible.
+The price estimate is withheld for an unknown input subtotal.
+
 ## Agent comparison
 
 The arena compares **Codex** with **Codex + Jev Harness** on four original synthetic tasks: reading a module, recording a proposed fix, inspecting timeouts and asking about an ambiguous request.
@@ -55,6 +63,8 @@ output pipe open, so settlement does not wait for that pipe's natural closure.
 Cancelled calls are checked before preparation and again before CLI dispatch.
 Answers use streaming UTF-8 decoding so chunk boundaries preserve multilingual
 text. Request-body reads stop on browser cancellation.
+If reported cached input exceeds a known input total, only the cached subtotal
+becomes unknown; the CLI outcome and independent measurements are retained.
 
 The lanes run concurrently after routing. Shared resource contention can affect timing. Both lanes have the same task, fixture, CLI settings and default model, but independent model trajectories and cache effects. Exposed-tool selection is the treatment; this does not gate all operations in a general-purpose production agent. One run does not establish quality, accuracy, latency or cost improvements. Task quality is not scored automatically.
 
@@ -82,6 +92,12 @@ Input and duration trends pair completed lanes only when the fixture id, task, f
 
 History is unencrypted local evidence, not authenticated provenance or an account-wide database. It contains no API-key fields. Clear local history requires confirmation and leaves the API key and usage log intact; clearing usage leaves comparisons intact. Saved results from another port or device are not synchronized.
 
+A saved ID cannot be reused for different evidence. Equivalent saves tolerate
+object-key ordering and remain idempotent; ordered arrays keep their meaning.
+Conflicting duplicate IDs are excluded with a visible error while the raw cache
+is preserved. Saved call counts must agree with retained trace length and
+truncation, and known cache subtotals cannot exceed known input totals.
+
 The chart continues observing its size after an assessment filter removes and
 recreates it, including later viewport changes.
 
@@ -93,6 +109,8 @@ Provider requests reject redirects instead of forwarding payloads to another
 destination. The review-experiment host bounds fetch and response reads under
 one deadline, including transports that ignore cancellation, and records
 actual received bytes.
+Mandatory request-byte totals must remain in the supported integer range;
+invalid aggregates are rejected rather than rounded or clamped.
 
 The demo selects `probability_sum_only_v1` in
 `examples/routing/host-policy.ts` through the configurable `createLiveHandler`: at most three total identical requests for a sole

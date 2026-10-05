@@ -44,8 +44,10 @@ export function createReviewHttpTransport(options: { key: string; fetch?: typeof
     const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
     try {
       requestSignal.throwIfAborted();
+      const body = JSON.stringify(payload);
+      requestSignal.throwIfAborted();
       measurement.dispatched = true;
-      const pending = upstreamFetch(JEV_SYSTEMONE_URL, { method: "POST", headers: { Authorization: `Bearer ${options.key}`, "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: requestSignal, redirect: "error" }).then(result => {
+      const pending = upstreamFetch(JEV_SYSTEMONE_URL, { method: "POST", headers: { Authorization: `Bearer ${options.key}`, "Content-Type": "application/json" }, body, signal: requestSignal, redirect: "error" }).then(result => {
         if (requestSignal.aborted) void result.body?.cancel().catch(() => {});
         return result;
       });

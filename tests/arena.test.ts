@@ -235,3 +235,26 @@ test("cancellation during CLI preparation stops before process dispatch", async 
   assert.equal(result.inputTokens, null);
   assert.equal(result.toolCallCount, 0);
 });
+
+test("CLI cached input cannot exceed a known total and remains independently known otherwise", async t => {
+  if (process.platform === "win32") { t.skip("The CLI adapter is unsupported on Windows."); return; }
+  const dir = await mkdtemp(join(tmpdir(), "jev-cli-cache-test-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const cases = [
+    { input: 10, cached: 20, expected: null },
+    { input: 10, cached: 10, expected: 10 },
+    { input: 10, cached: 3, expected: 3 },
+    { input: null, cached: 20, expected: 20 },
+  ];
+  for (const [index, measurement] of cases.entries()) {
+    const fake = join(dir, `fake-cli-${index}`);
+    const usage = { input_tokens: measurement.input, cached_input_tokens: measurement.cached, output_tokens: 1 };
+    await writeFile(fake, `#!/usr/bin/env node\nprocess.stdin.resume();process.stdin.on("end",()=>console.log(JSON.stringify({type:"turn.completed",usage:${JSON.stringify(usage)}})));\n`, { mode: 0o700 });
+    const result = await runCodex(ARENA_CASES[0], [], new AbortController().signal, fake);
+    assert.equal(result.status, "completed");
+    assert.equal(result.error, null);
+    assert.equal(result.inputTokens, measurement.input);
+    assert.equal(result.outputTokens, 1);
+    assert.equal(result.cachedInputTokens, measurement.expected);
+  }
+});

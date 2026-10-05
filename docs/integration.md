@@ -105,6 +105,9 @@ Queued assessment writes read current History inside the storage lock. Reviews
 for runs added during the wait are retained, while a removed target run or
 unreadable History prevents the save and leaves the draft and prior annotations
 available.
+Saved run IDs keep their original evidence. Changed evidence under an existing
+ID is rejected so an earlier human assessment cannot silently grade a new task
+or answer. Equivalent saves remain idempotent.
 
 ## Rollout and rollback
 

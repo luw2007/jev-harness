@@ -14,6 +14,7 @@ import type { RunPayload } from "../../src/contract/payload.js";
 import { REVIEW_QUESTIONS, UNTRUSTED_NOTE } from "../../src/contract/review.js";
 import { JEV_MODEL, REVIEW_QUESTION_SET_VERSION, type Fixture, type JevSource, type JevTransport, type Receipt, type ReviewArm } from "../../src/contract/types.js";
 import { reviewResponse, type ReviewMeasurement } from "../host/review-experiment.js";
+import { sumCounts } from "../routing/measurement.js";
 
 const sha256 = (text: string | Buffer) => createHash("sha256").update(text).digest("hex");
 const root = fileURLToPath(new URL("../../", import.meta.url));
@@ -137,7 +138,7 @@ export async function runReviewExperiment(options: { runs: number }, deps: Revie
     summaries.push({ runIndex, aggregate, table: renderBenchTable(aggregate) });
   }
   const plus = receipts.filter(r => r.mode === "plus_jev"), plannedPlusJevCases = fixtures.length * 2 * options.runs;
-  const usage = (field: "inputTokens" | "outputTokens") => ({ knownSum: attempts.reduce((sum, a) => sum + (a[field] ?? 0), 0), knownAttempts: attempts.filter(a => a[field] !== null).length, unknownAttempts: attempts.filter(a => a[field] === null).length });
+  const usage = (field: "inputTokens" | "outputTokens") => ({ knownSum: sumCounts(attempts.flatMap(a => a[field] === null ? [] : [a[field]])), knownAttempts: attempts.filter(a => a[field] !== null).length, unknownAttempts: attempts.filter(a => a[field] === null).length });
   return {
     schemaVersion: 1 as const, artifactId, at, finishedAt: now(), status: deps.signal?.aborted ? "cancelled" as const : "complete" as const,
     source: deps.source, model: JEV_MODEL, threshold: REVIEW_CONFIDENCE_THRESHOLD, questionSetVersion: REVIEW_QUESTION_SET_VERSION,

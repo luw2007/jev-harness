@@ -91,7 +91,9 @@ export async function runCodex(fixture: CliFixture, tools: readonly CliTool[], s
         output += decoder.decode();
         let answer = "", usage: Record<string, unknown> = {}, completed = false;
         for (const line of output.split("\n")) { try { const event = JSON.parse(line); if (event.type === "item.completed" && event.item?.type === "agent_message" && typeof event.item.text === "string") answer = event.item.text.slice(0, 20000); if (event.type === "turn.completed") { usage = event.usage ?? {}; completed = true; } } catch {} }
-        resolveResult({ status: signal.aborted ? "cancelled" : !stopped && !spawnError && code === 0 && completed ? "completed" : "failed", answer, durationMs: performance.now() - start, inputTokens: tokens(usage.input_tokens), cachedInputTokens: tokens(usage.cached_input_tokens), outputTokens: tokens(usage.output_tokens), toolCallCount: 0, traceTruncated: false, toolCalls: [], error: signal.aborted ? "Run cancelled." : stopped ? "CLI time or output limit reached." : spawnError ? "Codex CLI could not start. Install it and sign in on this host." : code !== 0 || !completed ? "Codex did not complete. Check host CLI sign-in and configuration." : null });
+        const inputTokens = tokens(usage.input_tokens), cached = tokens(usage.cached_input_tokens);
+        const cachedInputTokens = inputTokens !== null && cached !== null && cached > inputTokens ? null : cached;
+        resolveResult({ status: signal.aborted ? "cancelled" : !stopped && !spawnError && code === 0 && completed ? "completed" : "failed", answer, durationMs: performance.now() - start, inputTokens, cachedInputTokens, outputTokens: tokens(usage.output_tokens), toolCallCount: 0, traceTruncated: false, toolCalls: [], error: signal.aborted ? "Run cancelled." : stopped ? "CLI time or output limit reached." : spawnError ? "Codex CLI could not start. Install it and sign in on this host." : code !== 0 || !completed ? "Codex did not complete. Check host CLI sign-in and configuration." : null });
       });
       child.stdin.on("error", () => {});
       child.stdin.end(arenaPrompt(fixture));

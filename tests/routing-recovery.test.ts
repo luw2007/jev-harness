@@ -3,11 +3,78 @@ import assert from "node:assert/strict";
 import { createJevChoiceRouter } from "../examples/host/jev-choice.js";
 import { routeTools } from "../src/routing/index.js";
 import { DEMO_CATALOG, DEMO_POLICY } from "../examples/routing/scenarios.js";
+import { sumCounts, attemptTotals, parseMeasurement } from "../examples/routing/measurement.js";
 
 const input = { intent: "Read the synthetic file", availableIds: ["read_file"] };
 const valid = () => ({ model: "jev-1.13.0", answers: { tool: { type: "choice", choice: "read_file", confidence: .9, probabilities: { read_file: .9, needs_clarification: .1 } } }, usage: { input_tokens: 100, output_tokens: 10 } });
 const invalidSum = () => { const raw = valid(); raw.answers.tool.probabilities.needs_clarification = .09; return raw; };
 const run = (handle: ReturnType<typeof createJevChoiceRouter>) => routeTools(DEMO_CATALOG, input, DEMO_POLICY, handle.router);
+
+test("count totals retain exact safe boundaries and keep overflow unknown", () => {
+  assert.equal(sumCounts([]), 0);
+  assert.equal(sumCounts([Number.MAX_SAFE_INTEGER - 1, 1]), Number.MAX_SAFE_INTEGER);
+  assert.equal(sumCounts([Number.MAX_SAFE_INTEGER, 0]), Number.MAX_SAFE_INTEGER);
+  assert.equal(sumCounts([Number.MAX_SAFE_INTEGER, 1]), null);
+  assert.equal(sumCounts([Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER, 1]), null);
+  for (const value of [-1, 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) assert.equal(sumCounts([value]), null);
+});
+
+test("mandatory request-byte totals fail explicitly when valid per-attempt counts overflow", async () => {
+  let calls = 0;
+  const handle = createJevChoiceRouter({ key: "<synthetic-test-key>", recovery: "probability_sum_only_v1",
+    fetch: async () => Response.json(++calls === 1 ? invalidSum() : valid()),
+  });
+  const receipt = await run(handle);
+  const measurement = structuredClone(handle.state.measurement!), ledger = measurement.attemptLedger!;
+  for (const attempt of ledger.attempts) attempt.requestBytes = Math.floor(Number.MAX_SAFE_INTEGER / 2);
+  measurement.requestBytes = Number.MAX_SAFE_INTEGER - 1;
+  assert.equal(attemptTotals(ledger).requestBytes, measurement.requestBytes);
+  assert.deepEqual(parseMeasurement(measurement, receipt.request.options.map(option => option.id), receipt.evidence), measurement);
+  for (const attempt of ledger.attempts) attempt.requestBytes = Number.MAX_SAFE_INTEGER;
+  measurement.requestBytes = Number.MAX_SAFE_INTEGER;
+  assert.throws(() => attemptTotals(ledger), /request-byte total/);
+  assert.throws(() => parseMeasurement(measurement, receipt.request.options.map(option => option.id), receipt.evidence), /request-byte total/);
+  assert.ok(ledger.attempts.every(attempt => attempt.requestBytes === Number.MAX_SAFE_INTEGER));
+});
+
+test("recovered measurements round-trip when individually valid token counts overflow", async () => {
+  for (const overflow of ["input_tokens", "output_tokens"] as const) {
+    let calls = 0;
+    const handle = createJevChoiceRouter({ key: "<synthetic-test-key>", recovery: "probability_sum_only_v1", fetch: async () => {
+      const raw = ++calls === 1 ? invalidSum() : valid();
+      raw.usage = { input_tokens: 5, output_tokens: 5 };
+      raw.usage[overflow] = Number.MAX_SAFE_INTEGER;
+      return Response.json(raw);
+    } });
+    const receipt = await run(handle), measurement = handle.state.measurement!, ledger = measurement.attemptLedger!;
+    assert.equal(receipt.outcome, "selected");
+    assert.deepEqual(ledger.attempts.map(attempt => attempt.status), ["invalid_sum", "valid"]);
+    const totals = attemptTotals(ledger), metric = overflow === "input_tokens" ? "input" : "output";
+    assert.deepEqual(totals[metric], { total: null, reported: null, unknown: 0 });
+    assert.equal(measurement.inputTokens, metric === "input" ? null : 10);
+    assert.equal(measurement.outputTokens, metric === "output" ? null : 10);
+    assert.ok(ledger.attempts.every(attempt => (metric === "input" ? attempt.inputTokens : attempt.outputTokens) === Number.MAX_SAFE_INTEGER));
+    assert.equal(totals.providerRequests, 2);
+    assert.ok(measurement.responseBytes !== null && measurement.responseBytes > 0);
+    assert.deepEqual(parseMeasurement(JSON.parse(JSON.stringify(measurement)), receipt.request.options.map(option => option.id), receipt.evidence), measurement);
+  }
+});
+
+test("overflowed reported subtotals preserve independently missing attempt counts", async () => {
+  let calls = 0;
+  const handle = createJevChoiceRouter({ key: "<synthetic-test-key>", recovery: "probability_sum_only_v1", fetch: async () => {
+    const raw = ++calls < 3 ? invalidSum() : valid();
+    raw.usage.input_tokens = Number.MAX_SAFE_INTEGER;
+    if (calls === 3) delete (raw.usage as Partial<typeof raw.usage>).input_tokens;
+    return Response.json(raw);
+  } });
+  const receipt = await run(handle), measurement = handle.state.measurement!;
+  assert.equal(receipt.outcome, "selected");
+  assert.deepEqual(attemptTotals(measurement.attemptLedger!).input, { total: null, reported: null, unknown: 1 });
+  assert.equal(measurement.inputTokens, null);
+  assert.equal(measurement.outputTokens, 30);
+  assert.deepEqual(parseMeasurement(measurement, receipt.request.options.map(option => option.id), receipt.evidence), measurement);
+});
 
 test("sum-only recovery records every identical dispatch and total usage", async () => {
   for (const failures of [1, 2, 3]) {
@@ -228,4 +295,35 @@ test("subset telemetry still requires the mandatory clarification option", async
   ledger.attempts[0]!.projection!.probabilities = { read_file: 1 };
   ledger.attempts[0]!.diagnostic!.probabilitySum = 1;
   assert.throws(() => parseMeasurement(measureLedger(ledger, handle.state.measurement!.latencyMs), ["read_file", "needs_clarification"], undefined, true));
+});
+
+test("diagnostic object key order does not change ledger replay or same-ID history", async () => {
+  const { parseMeasurement } = await import("../examples/routing/measurement.js");
+  const { createRun, parseHistory, saveRun, HISTORY_KEY } = await import("../examples/arena/history.js");
+  const { ARENA_CASES } = await import("../examples/arena/cases.js");
+  const fixture = ARENA_CASES[0]!;
+  const handle = createJevChoiceRouter({ key: "<synthetic-test-key>", fetch: async () => Response.json(valid()) });
+  const receipt = await routeTools(DEMO_CATALOG, { intent: fixture.task, availableIds: input.availableIds }, DEMO_POLICY, handle.router);
+  const original = handle.state.measurement!, optionIds = receipt.request.options.map(option => option.id);
+  const run = createRun({ id: "diagnostic-order", startedAt: "2026-10-05T00:00:00Z", finishedAt: "2026-10-05T00:00:01Z", fixture, status: "failed", message: "Synthetic", lanes: {}, receipt, jevUsage: original });
+  const saved = new Map<string, string>();
+  const storage = { getItem: (key: string) => saved.get(key) ?? null, setItem: (key: string, value: string) => saved.set(key, value), removeItem: (key: string) => saved.delete(key) };
+  assert.equal(saveRun(storage, run).saved, true);
+  const stored = storage.getItem(HISTORY_KEY);
+  const reverseKeys = <T extends object>(value: T): T => Object.fromEntries(Object.entries(value).reverse()) as T;
+  for (const nested of [false, true]) {
+    const reordered = structuredClone(original);
+    if (nested) reordered.attemptLedger!.attempts[0]!.diagnostic = reverseKeys(reordered.attemptLedger!.attempts[0]!.diagnostic!);
+    else reordered.diagnostic = reverseKeys(reordered.diagnostic!);
+    assert.deepEqual(parseMeasurement(reordered, optionIds, receipt.evidence), original);
+    const equivalent = { ...run, jevUsage: reordered };
+    assert.equal(saveRun(storage, equivalent).saved, true);
+    assert.equal(storage.getItem(HISTORY_KEY), stored, "equivalent evidence needs no storage rewrite");
+    const duplicate = parseHistory(JSON.stringify({ version: 1, runs: [run, equivalent] }));
+    assert.equal(duplicate.error, null);
+    assert.deepEqual(duplicate.runs, [run]);
+    reordered.diagnostic!.probabilitySum = 0.5;
+    assert.throws(() => parseMeasurement(reordered, optionIds, receipt.evidence));
+  }
+  assert.throws(() => parseMeasurement(original, [...optionIds].reverse(), receipt.evidence), "option arrays retain their order");
 });

@@ -1,7 +1,7 @@
 import type { CliResult } from "../host/codex";
 import { FIXTURE_HOST_REVISION } from "../host/fixture-tools.mjs";
 import { parseFixtureHostRevision, parseFixtureToolCalls } from "../host/fixture-records";
-import { parseMeasurement, parseRoutingTransport, routingTransport, type RoutingTransport, type RouterMeasurement } from "../routing/measurement";
+import { parseMeasurement, parseRoutingTransport, routingTransport, sumCounts, type RoutingTransport, type RouterMeasurement } from "../routing/measurement";
 import { DEMO_CATALOG } from "../routing/scenarios";
 import { HOST_ROUTING_RECOVERY, arenaSetupVersion } from "../routing/host-policy";
 import type { RoutingReceipt, RoutingPolicy, ToolDefinition } from "../../src/routing";
@@ -58,7 +58,11 @@ function receipt(value: unknown): RoutingReceipt | null {
 }
 function lane(value: unknown, files: SavedFixture["files"], revision: typeof FIXTURE_HOST_REVISION | undefined): SavedLane {
   const v = record(value), r = record(v.result);
-  return { tools: list(v.tools, text), result: { status: literal(r.status, ["completed", "failed", "cancelled"]), answer: text(r.answer), durationMs: duration(r.durationMs), inputTokens: nullable(r.inputTokens), cachedInputTokens: nullable(r.cachedInputTokens), outputTokens: nullable(r.outputTokens), toolCallCount: integer(r.toolCallCount), traceTruncated: bool(r.traceTruncated), toolCalls: parseFixtureToolCalls(r.toolCalls, files, revision), error: r.error === null ? null : text(r.error) } };
+  const inputTokens = nullable(r.inputTokens), cachedInputTokens = nullable(r.cachedInputTokens);
+  const toolCallCount = integer(r.toolCallCount), traceTruncated = bool(r.traceTruncated), toolCalls = parseFixtureToolCalls(r.toolCalls, files, revision);
+  if (inputTokens !== null && cachedInputTokens !== null && cachedInputTokens > inputTokens) throw Error();
+  if (traceTruncated ? toolCallCount <= 100 || toolCalls.length !== 100 : toolCallCount !== toolCalls.length) throw Error();
+  return { tools: list(v.tools, text), result: { status: literal(r.status, ["completed", "failed", "cancelled"]), answer: text(r.answer), durationMs: duration(r.durationMs), inputTokens, cachedInputTokens, outputTokens: nullable(r.outputTokens), toolCallCount, traceTruncated, toolCalls, error: r.error === null ? null : text(r.error) } };
 }
 function parseRun(value: unknown): ArenaRun {
   const v = record(value), f = record(v.fixture), lanes = record(v.lanes);
@@ -82,6 +86,11 @@ function parseRun(value: unknown): ArenaRun {
     lanes: { ...(lanes.baseline ? { baseline: lane(lanes.baseline, files, fixtureHostRevision) } : {}), ...(lanes.integrated ? { integrated: lane(lanes.integrated, files, fixtureHostRevision) } : {}) }, receipt: routed, jevUsage: measured,
   };
 }
+/** Parsed snapshots contain JSON data; object key order does not change evidence. */
+function runIdentity(run: ArenaRun): string {
+  return JSON.stringify(run, (_key, value: unknown) => value && typeof value === "object" && !Array.isArray(value)
+    ? Object.fromEntries(Object.keys(value).sort().map(key => [key, (value as Record<string, unknown>)[key]])) : value);
+}
 export function createRun(value: Omit<ArenaRun, "schemaVersion" | "setupVersion" | "fixtureHostRevision">): ArenaRun {
   const ledger = value.jevUsage?.attemptLedger;
   const transport = value.routingTransport ?? routingTransport(ledger?.recovery ?? HOST_ROUTING_RECOVERY, ledger?.timeoutMs);
@@ -97,9 +106,17 @@ export function parseHistory(raw: string | null): HistoryState {
   try {
     if (bytes(raw) > MAX_BYTES) throw Error();
     const v = record(JSON.parse(raw)); if (v.version !== 1 || !Array.isArray(v.runs) || v.runs.length > MAX_RUNS) throw Error();
-    const runs: ArenaRun[] = []; let invalid = false;
-    for (const item of v.runs) { try { runs.push(parseRun(item)); } catch { invalid = true; } }
-    return { runs: retainRuns(runs), error: invalid ? "Some saved runs could not be read and were left out." : null };
+    const runs = new Map<string, ArenaRun>(), conflicting = new Set<string>(); let invalid = false;
+    for (const item of v.runs) {
+      try {
+        const parsed = parseRun(item);
+        if (conflicting.has(parsed.id)) continue;
+        const existing = runs.get(parsed.id);
+        if (existing && runIdentity(existing) !== runIdentity(parsed)) { runs.delete(parsed.id); conflicting.add(parsed.id); invalid = true; }
+        else if (!existing) runs.set(parsed.id, parsed);
+      } catch { invalid = true; }
+    }
+    return { runs: retainRuns([...runs.values()]), error: invalid ? `Some saved runs ${conflicting.size ? "had conflicting IDs or could not be read" : "could not be read"} and were left out.` : null };
   } catch { return { runs: [], error: "Local history could not be read. Clear it to start fresh, or download the current run." }; }
 }
 export function readHistory(storage: HistoryStorage): HistoryState { try { return parseHistory(storage.getItem(HISTORY_KEY)); } catch { return { runs: [], error: "Browser storage is unavailable. Current results still work; download them to keep a copy." }; } }
@@ -109,7 +126,10 @@ export function saveRun(storage: HistoryStorage, run: ArenaRun): HistoryState & 
   try {
     const clean = parseRun(run);
     if (bytes(encode([clean])) > MAX_BYTES) return { ...previous, saved: false, error: "This run is too large for local history. Download it to keep the full result." };
-    const runs = retainRuns([clean, ...previous.runs.filter(item => item.id !== clean.id)]);
+    const existing = previous.runs.find(item => item.id === clean.id);
+    if (existing) return runIdentity(existing) === runIdentity(clean) ? { ...previous, saved: true }
+      : { ...previous, saved: false, error: "Different evidence is already saved with this run ID. Existing history was preserved; download the current run to keep it." };
+    const runs = retainRuns([clean, ...previous.runs]);
     if (!runs.some(item => item.id === clean.id)) return { ...previous, saved: false, error: "This run falls outside the retained history. Download it to keep its evidence." };
     storage.setItem(HISTORY_KEY, encode(runs));
     return { runs, saved: true, error: null };
@@ -120,7 +140,7 @@ export type PerformanceMetric = "input" | "duration";
 export function runMetrics(run: ArenaRun, metric: PerformanceMetric) {
   const base = run.lanes.baseline?.result, integrated = run.lanes.integrated?.result;
   if (metric === "duration") return { baseline: base?.durationMs ?? null, integrated: integrated && run.jevUsage?.latencyMs != null ? integrated.durationMs + run.jevUsage.latencyMs : null };
-  return { baseline: base?.inputTokens ?? null, integrated: integrated?.inputTokens != null && run.jevUsage?.inputTokens != null ? integrated.inputTokens + run.jevUsage.inputTokens : null };
+  return { baseline: base?.inputTokens ?? null, integrated: integrated?.inputTokens != null && run.jevUsage?.inputTokens != null ? sumCounts([integrated.inputTokens, run.jevUsage.inputTokens]) : null };
 }
 function sameFixture(a: SavedFixture, b: SavedFixture) { return a.id === b.id && a.task === b.task && JSON.stringify(Object.entries(a.files).sort()) === JSON.stringify(Object.entries(b.files).sort()); }
 export function performanceSeries(runs: readonly ArenaRun[], fixture: SavedFixture, metric: PerformanceMetric, setupVersion = ARENA_SETUP_VERSION, transport = routingTransport(setupVersion === 7 ? "probability_sum_only_v1" : "none")) {

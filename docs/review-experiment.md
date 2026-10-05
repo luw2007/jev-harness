@@ -27,12 +27,16 @@ cases with partial status. Cases not started remain explicitly counted.
 Settled receipts retain their answered or unavailable attempt status if a later
 interrupt stops the batch. A request cancelled before its review settles retains
 an unavailable receipt and a cancelled attempt.
+Serialization failures before fetch are recorded with `dispatched: false`,
+unknown usage and zero provider attempts.
 
 The artifact includes source revision and file hashes, exact questions and
 profile hash, frozen fixture/label metadata, receipts, indexed repetitions,
 attempts, response status, host latency, and independently nullable input/output
 usage. The analyzer treats each indexed repetition as a separate run. Compare
 candidate profiles separately; pooling different questions is not repeatability.
+Reported token `knownSum` is null when an aggregate exceeds the supported integer
+range. Per-attempt values and known/unknown attempt counts remain unchanged.
 
 Label corrections use the latest timestamp instant, including timezone offsets
 and fractional seconds. Equal instants preserve input order, with the last
@@ -43,6 +47,9 @@ Each reviewed receipt must have a label in its own logical run, including
 unanswered receipts. Cross-run corrections cannot supply missing local labels.
 Unknown modes, arms, label verdicts and empty case metadata are rejected before
 filtering instead of silently disappearing from the analysis.
+Every recorded probability/answer/confidence triple must match the existing
+canonical Noul derivation before descriptive per-question analysis. Malformed
+triples are rejected rather than mixed into confidence distributions.
 
 Only synthetic task, files, evidence and proposal fields reach Jev. Labels and
 mock values stay in evaluation metadata. The host retains sanitized response

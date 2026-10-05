@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { analyze, collect, miss, toMarkdown, type RunFile } from "../scripts/analyze-review-runs.js";
-import type { JevReview } from "../src/contract/types.js";
+import { REVIEW_QUESTION_IDS, type JevReview } from "../src/contract/types.js";
 
 // Tiny original synthetic runs. Arithmetic fixtures only; no live or recorded data.
 const answer = (probability: number) => ({
@@ -216,6 +216,45 @@ test("miss separates direction from confidence for canonical recorded answers", 
   assert.equal(miss("unrelated_changes", answer(0.6), 0.8), "direction");
   assert.equal(miss("addresses_task", answer(0.7), 0.8), "confidence");
   assert.equal(miss("addresses_task", answer(0.8), 0.8), null);
+});
+
+test("malformed answer triples are refused before per-question statistics", () => {
+  const invalid: unknown[] = [
+    {}, [],
+    { probability: null, answer: "yes", confidence: 0.95 },
+    { probability: "0.95", answer: "yes", confidence: 0.95 },
+    { probability: -0.01, answer: "no", confidence: 1.01 },
+    { probability: 1.01, answer: "yes", confidence: 1.01 },
+    { probability: Number.NaN, answer: "yes", confidence: 0.95 },
+    { probability: Infinity, answer: "yes", confidence: 0.95 },
+    { probability: 0.01, answer: "yes", confidence: 0.99 },
+    { probability: 0.5, answer: "no", confidence: 0.5 },
+    { probability: 0.95, answer: "maybe", confidence: 0.95 },
+    { probability: 0.95, answer: "yes" },
+    { probability: 0.95, answer: "yes", confidence: null },
+    { probability: 0.95, answer: "yes", confidence: "0.95" },
+    { probability: 0.95, answer: "yes", confidence: 0.49 },
+    { probability: 0.95, answer: "yes", confidence: 0.96 },
+    { probability: 0.95, answer: "yes", confidence: Number.NaN },
+    { probability: 0.95, answer: "yes", confidence: Infinity },
+  ];
+  for (const id of REVIEW_QUESTION_IDS) for (const value of invalid) {
+    const file = structuredClone(files[0]!);
+    const answers = file.receipts[0]!.jev!.answers! as unknown as Record<string, unknown>;
+    answers[id] = value;
+    assert.throws(() => collect([file]), new RegExp(`malformed ${id} answer triple`));
+    assert.throws(() => analyze([file]), new RegExp(`malformed ${id} answer triple`));
+  }
+});
+
+test("canonical probability endpoints and uncertain yes remain valid recorded data", () => {
+  for (const p of [0, 0.5, 1]) {
+    const file = structuredClone(files[0]!);
+    for (const id of REVIEW_QUESTION_IDS) file.receipts[0]!.jev!.answers![id] = answer(p);
+    const { observations } = collect([file]);
+    assert.deepEqual(observations[0]!.answers, file.receipts[0]!.jev!.answers);
+    assert.doesNotThrow(() => analyze([file]));
+  }
 });
 
 test("per-question and pooled sweeps count blocks and catches", () => {

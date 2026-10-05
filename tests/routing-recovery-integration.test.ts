@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createLiveHandler } from "../examples/host/live.js";
 import { createJevChoiceRouter } from "../examples/host/jev-choice.js";
 import { parseCliArgs } from "../examples/routing/experiment-cli.js";
-import { buildArtifact, runExperiment, fakeProposer, parseExperimentArtifact, summarizeExperiment } from "../examples/routing/experiment.js";
+import { buildArtifact, runExperiment, fakeProposer, fakeRouterFor, parseExperimentArtifact, summarizeExperiment, reportedTotals } from "../examples/routing/experiment.js";
 import { EXPERIMENT_LABELS } from "../examples/routing/experiment-tasks.js";
 import { DEMO_POLICY, DEMO_CATALOG } from "../examples/routing/scenarios.js";
 import { routeTools } from "../src/routing/index.js";
@@ -59,6 +59,39 @@ test("versioned live artifacts retain physical attempts, proxies and replay vali
     (a: typeof artifact) => { a.routingTransport!.recovery = "none"; },
     (a: typeof artifact) => { a.trials.find(t => t.routing)!.proxies.jevPhysicalRequestTokens = 1; },
   ]) { const changed = structuredClone(artifact); mutate(changed); await assert.rejects(parseExperimentArtifact(changed)); }
+});
+
+test("experiment diagnostic replay ignores object key order while preserving closed fields and option order", async () => {
+  const config = routingTransport();
+  const trials = await runExperiment({ runs: 1, sizes: ["small"], policy: DEMO_POLICY }, { source: "live", routingTransport: config, proposer: fakeProposer, routerFor: () => {
+    const handle = createJevChoiceRouter({ key: "<synthetic-test-key>", fetch: async (_url, init) => fakeResponse(init?.body) });
+    return { router: handle.router, measurement: () => handle.state.measurement };
+  } });
+  const artifact = buildArtifact(trials, { source: "live", routingTransport: config, command: "synthetic diagnostic replay", generatedAt: "2026-10-05T00:00:00Z", policy: DEMO_POLICY, runs: 1, sizes: ["small"], proposer: "fake", labels: EXPERIMENT_LABELS });
+  const reordered = structuredClone(artifact);
+  for (const trial of reordered.trials) if (trial.routing?.diagnostic) {
+    trial.routing.diagnostic = Object.fromEntries(Object.entries(trial.routing.diagnostic).reverse()) as typeof trial.routing.diagnostic;
+  }
+  assert.deepEqual(await parseExperimentArtifact(reordered), reordered, "replay preserves equivalent retained object ordering");
+  const extra = structuredClone(reordered);
+  Object.assign(extra.trials.find(trial => trial.routing)!.routing!.diagnostic!, { extra: true });
+  await assert.rejects(parseExperimentArtifact(extra), /attempt accounting/);
+  const wrong = structuredClone(reordered);
+  wrong.trials.find(trial => trial.routing)!.routing!.diagnostic!.probabilitySum = 0.5;
+  await assert.rejects(parseExperimentArtifact(wrong), /attempt accounting/);
+  const changedOrder = structuredClone(reordered);
+  changedOrder.trials.find(trial => trial.routing)!.routing!.optionIds.reverse();
+  await assert.rejects(parseExperimentArtifact(changedOrder), /routing/);
+});
+
+test("combined proposer and Jev counts stay exact or independently unknown on overflow", async () => {
+  const trials = await runExperiment({ runs: 1, sizes: ["small"], policy: DEMO_POLICY }, { source: "fake", proposer: fakeProposer, routerFor: fakeRouterFor });
+  const trial = trials.find(value => value.taskId === "read-small" && value.arm === "jev_top_k")!;
+  trial.proposer!.reported = { input: Number.MAX_SAFE_INTEGER, cachedInput: 0, output: 1 };
+  trial.routing!.reported = { input: 1, output: 2 };
+  assert.deepEqual(reportedTotals(trial), { input: null, output: 3 });
+  trial.routing!.reported.input = 0;
+  assert.deepEqual(reportedTotals(trial), { input: Number.MAX_SAFE_INTEGER, output: 3 });
 });
 
 test("history and session usage preserve full ledger, with separate recovery cohort", async () => {

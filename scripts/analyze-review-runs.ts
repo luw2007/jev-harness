@@ -21,6 +21,8 @@
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { decide, FAVORABLE } from "../src/contract/decide.js";
+import { dataRecord } from "../src/contract/input.js";
+import { readNoul } from "../src/contract/review.js";
 import { REVIEW_QUESTION_IDS, type JevReview, type ReviewAnswer, type ReviewQuestionId } from "../src/contract/types.js";
 
 export type ArmClass = "good_permit" | "good_clarify" | "bad";
@@ -151,6 +153,13 @@ function collectLogicalRuns(files: readonly RunFile[]): { observations: Observat
       for (const id of REVIEW_QUESTION_IDS) {
         const a = r.jev.answers[id];
         if (!a) throw Error(`${r.fixtureId}/${r.arm} run ${run}: missing ${id}`);
+        const recorded = dataRecord(a);
+        const malformed = `${r.fixtureId}/${r.arm} run ${run}: malformed ${id} answer triple`;
+        let canonical: ReviewAnswer;
+        try { canonical = readNoul({ type: "noul", noul: recorded?.probability }, id); }
+        catch { throw Error(malformed); }
+        if (!recorded || recorded.answer !== canonical.answer || recorded.confidence !== canonical.confidence)
+          throw Error(malformed);
         answers[id] = a;
       }
       observations.push({
@@ -168,8 +177,8 @@ const favorable = (id: ReviewQuestionId, a: RunAnswer) => a.answer === FAVORABLE
  * Why one well-formed question answer fails an observation at a floor.
  *
  * This helper only classifies canonical recorded answers into direction versus
- * confidence misses. Malformed review envelopes and malformed answer triples are
- * handled by `decide()` in the pooled sweep, not split out here.
+ * confidence misses. Malformed answer triples are rejected during collection;
+ * malformed review envelopes are handled by `decide()` in the pooled sweep.
  */
 export function miss(id: ReviewQuestionId, a: RunAnswer, floor: number): "direction" | "confidence" | null {
   if (!favorable(id, a)) return "direction";

@@ -117,6 +117,26 @@ test("usage coverage counts input and output independently across incomplete rep
   assert.deepEqual(artifact.reportedUsage, { inputTokens: { knownSum: 12, knownAttempts: 1, unknownAttempts: 1 }, outputTokens: { knownSum: 9, knownAttempts: 1, unknownAttempts: 1 } });
 });
 
+test("review usage totals become unknown on overflow while individual measurements remain intact", async () => {
+  for (const field of ["input_tokens", "output_tokens"] as const) {
+    const artifact = await runReviewExperiment({ runs: 1 }, { source: "jev", fixtures: [clean], provenance, now,
+      transport: async () => ({ ...response(), usage: { input_tokens: 2, output_tokens: 2, [field]: Number.MAX_SAFE_INTEGER } }),
+    });
+    const overflowing = field === "input_tokens" ? "inputTokens" : "outputTokens";
+    const independent = field === "input_tokens" ? "outputTokens" : "inputTokens";
+    assert.equal(artifact.attempts.length, 2);
+    assert.deepEqual(artifact.reportedUsage[overflowing], { knownSum: null, knownAttempts: 2, unknownAttempts: 0 });
+    assert.deepEqual(artifact.reportedUsage[independent], { knownSum: 4, knownAttempts: 2, unknownAttempts: 0 });
+    assert.ok(artifact.attempts.every(attempt => attempt[overflowing] === Number.MAX_SAFE_INTEGER));
+  }
+  let calls = 0;
+  const partial = await runReviewExperiment({ runs: 2 }, { source: "jev", fixtures: [clean], provenance, now,
+    transport: async () => ({ ...response(), usage: ++calls <= 2 ? { input_tokens: Number.MAX_SAFE_INTEGER, output_tokens: 2 } : { output_tokens: 2 } }),
+  });
+  assert.deepEqual(partial.reportedUsage.inputTokens, { knownSum: null, knownAttempts: 2, unknownAttempts: 2 });
+  assert.deepEqual(partial.reportedUsage.outputTokens, { knownSum: 8, knownAttempts: 4, unknownAttempts: 0 });
+});
+
 test("HTTP transport bounds response bytes, refuses redirects, and does not retry", async () => {
   let calls = 0, cancelled = false;
   const handle = createReviewHttpTransport({ key: "synthetic-test-key", fetch: async (_url, init) => {
@@ -189,6 +209,23 @@ test("review response accounting records received bytes before malformed UTF-8 p
   await assert.rejects(handle.transport(buildReviewPayload(clean, clean.proposals.good)));
   assert.equal(handle.state.measurement?.responseBytes, 1);
   assert.equal(handle.state.measurement?.failure, "malformed_response");
+});
+
+test("review request serialization failure records no dispatched provider call", async () => {
+  const circular: Record<string, unknown> = {}; circular.self = circular;
+  for (const state of [1n, circular]) {
+    let calls = 0;
+    const handle = createReviewHttpTransport({ key: "<synthetic-test-key>", fetch: async () => { calls++; return Response.json(response()); } });
+    const payload = buildReviewPayload(clean, clean.proposals.good); payload.state = state;
+    await assert.rejects(handle.transport(payload));
+    assert.equal(calls, 0);
+    assert.equal(handle.state.measurement?.dispatched, false);
+    assert.equal(handle.state.measurement?.failure, "transport_error");
+    assert.equal(handle.state.measurement?.httpStatus, null);
+    assert.equal(handle.state.measurement?.responseBytes, null);
+    assert.equal(handle.state.measurement?.inputTokens, null);
+    assert.equal(handle.state.measurement?.outputTokens, null);
+  }
 });
 
 test("provenance hashes current source and raw fixture files independently of working directory", async () => {

@@ -33,13 +33,25 @@ export interface RouterMeasurement {
 }
 export type JevMeasurement = RouterMeasurement;
 const sum = (values: number[]) => values.reduce((a, b) => a + b, 0);
+/** Exact nonnegative count total, or unknown when Number cannot represent it safely. */
+export function sumCounts(values: readonly number[]): number | null {
+  let total = 0;
+  for (const value of values) {
+    if (!Number.isSafeInteger(value) || value < 0 || value > Number.MAX_SAFE_INTEGER - total) return null;
+    total += value;
+  }
+  return total;
+}
 export function attemptTotals(ledger: JevAttemptLedger) {
+  const requestBytes = sumCounts(ledger.attempts.map(a => a.requestBytes));
+  if (requestBytes === null) throw Error("Routing request-byte total cannot be represented as a safe nonnegative integer.");
   const metric = (key: "inputTokens" | "outputTokens" | "responseBytes") => {
     const known = ledger.attempts.flatMap(a => a[key] === null ? [] : [a[key]]);
-    return { total: ledger.complete && known.length === ledger.attempts.length ? sum(known) : null, reported: sum(known), unknown: ledger.attempts.length - known.length };
+    const reported = sumCounts(known);
+    return { total: ledger.complete && known.length === ledger.attempts.length ? reported : null, reported, unknown: ledger.attempts.length - known.length };
   };
   return { providerRequests: ledger.complete ? ledger.attempts.length : null, observedProviderRequests: ledger.attempts.length,
-    requestBytes: sum(ledger.attempts.map(a => a.requestBytes)), input: metric("inputTokens"), output: metric("outputTokens"), response: metric("responseBytes"),
+    requestBytes, input: metric("inputTokens"), output: metric("outputTokens"), response: metric("responseBytes"),
     retryLatencyMs: ledger.attempts.slice(1).every(a => a.latencyMs !== null) ? sum(ledger.attempts.slice(1).map(a => a.latencyMs!)) : null };
 }
 export function measureLedger(ledger: JevAttemptLedger, latencyMs: number | null): RouterMeasurement {
@@ -68,6 +80,12 @@ function diagnostic(raw: unknown): RoutingDiagnostic {
   if (!record(raw) || !keys(raw, ["modelMatches", "answerTypeMatches", "confidenceValid", "missingOptions", "unexpectedOptions", "probabilitySum", "choiceInSet", "leadingChoice"]) ||
     ![raw.modelMatches, raw.answerTypeMatches, raw.confidenceValid, raw.choiceInSet, raw.leadingChoice].every(v => typeof v === "boolean") || !count(raw.missingOptions) || !count(raw.unexpectedOptions) || !(raw.probabilitySum === null || finite(raw.probabilitySum))) return fail();
   return raw as unknown as RoutingDiagnostic;
+}
+function sameDiagnostic(a: RoutingDiagnostic | undefined, b: RoutingDiagnostic | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return a.modelMatches === b.modelMatches && a.answerTypeMatches === b.answerTypeMatches && a.confidenceValid === b.confidenceValid &&
+    a.missingOptions === b.missingOptions && a.unexpectedOptions === b.unexpectedOptions && a.probabilitySum === b.probabilitySum &&
+    a.choiceInSet === b.choiceInSet && a.leadingChoice === b.leadingChoice;
 }
 /** Strict new-format parser; old scalar measurements remain readable without invented attempts. */
 export function parseMeasurement(raw: unknown, allowedIds?: readonly string[], evidence?: RoutingEvidence | null, allowSubset = false): RouterMeasurement {
@@ -127,7 +145,7 @@ export function parseMeasurement(raw: unknown, allowedIds?: readonly string[], e
   } else if (l.stopReason !== null || l.returnedAttempt !== null || raw.latencyMs !== null || attempts.some(a => a.status !== "invalid_sum" && a.status !== "pending")) return fail();
   const ledger = { ...config, optionIds: [...ids], complete: l.complete, attempts, returnedAttempt: l.returnedAttempt, stopReason: l.stopReason } as JevAttemptLedger;
   const expected = measureLedger(ledger, clean.latencyMs);
-  for (const key of ["requestBytes", "responseBytes", "inputTokens", "outputTokens", "diagnostic"] as const) if (!same(clean[key], expected[key])) return fail();
+  for (const key of ["requestBytes", "responseBytes", "inputTokens", "outputTokens", "diagnostic"] as const) if (key === "diagnostic" ? !sameDiagnostic(clean.diagnostic, expected.diagnostic) : !same(clean[key], expected[key])) return fail();
   if (evidence !== undefined) {
     if (ledger.returnedAttempt === null ? evidence !== null : (evidence === null || !sameEvidence(evidence, projectedEvidence(last!.projection!)))) return fail();
   }
