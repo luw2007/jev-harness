@@ -114,6 +114,45 @@ test("later labels win, conflicts are reported, and unanswered receipts are skip
   assert.ok(observations.filter(o => o.fixtureId === "ask-good").every(o => o.cls === "good_clarify"));
 });
 
+test("each reviewed receipt needs its own logical-run label before cross-run corrections", () => {
+  for (const indexed of [false, true]) {
+    for (const answered of [false, true]) {
+      const incomplete = indexed ? repeated() : structuredClone(files[0]!);
+      incomplete.runs = incomplete.runs.filter(row => row.fixtureId !== "sum-good");
+      if (!answered) incomplete.receipts.filter(row => row.fixtureId === "sum-good").forEach(row => { row.jev = null; });
+      assert.throws(() => collect([incomplete, files[1]!]), /logical.run label/);
+      assert.throws(() => analyze([incomplete, files[1]!]), /logical.run label/);
+    }
+  }
+});
+
+test("invalid case metadata cannot disappear through mode filtering or unanswered skips", () => {
+  for (const group of ["runs", "receipts"] as const) {
+    for (const change of [{ fixtureId: "" }, { fixtureId: null }, { arm: "other" }, { mode: "plus-jev" }, { mode: null }]) {
+      const file = structuredClone(files[0]!);
+      Object.assign(file[group][0]!, change);
+      file.receipts.forEach(row => { row.jev = null; });
+      assert.throws(() => collect([file]), /case metadata/);
+    }
+  }
+  for (const change of [{ category: "" }, { category: null }, { expected: "permitt" }, { expected: ["permit"] }]) {
+    const file = structuredClone(files[0]!);
+    Object.assign(file.runs[0]!, change);
+    assert.throws(() => collect([file]), /label metadata/);
+  }
+});
+
+test("label conflict identities retain fixture IDs containing separator characters", () => {
+  const inputs = structuredClone(files);
+  for (const file of inputs) {
+    for (const row of [...file.runs, ...file.receipts]) {
+      if (row.fixtureId === "ask-good") row.fixtureId = "ask\u0000synthetic";
+    }
+  }
+  assert.equal(collect(inputs).conflicts[0]!.fixtureId, "ask\u0000synthetic");
+  assert.equal(collect(inputs).conflicts[0]!.arm, "good");
+});
+
 test("latest label uses chronological instants across offsets and fractional timestamps", () => {
   for (const [earlier, later] of [
     ["2026-01-01T01:00:00+01:00", "2026-01-01T00:30:00Z"],

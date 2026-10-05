@@ -64,6 +64,8 @@ function classify(arm: string, expected: string): ArmClass {
   return expected === "permit" ? "good_permit" : "good_clarify";
 }
 
+const caseKey = (fixtureId: string, arm: string) => JSON.stringify([fixtureId, arm]);
+
 /** Preserve legacy order and reject incomplete indexing before any rows are filtered. */
 function logicalRuns(files: readonly RunFile[]): RunFile[] {
   return files.flatMap(file => {
@@ -101,14 +103,25 @@ function collectLogicalRuns(files: readonly RunFile[]): { observations: Observat
     for (const group of ["runs", "receipts"] as const) {
       const seen = new Set<string>();
       for (const row of file[group]) {
+        if (typeof row.fixtureId !== "string" || !row.fixtureId ||
+          (row.arm !== "good" && row.arm !== "bad") || (row.mode !== "base" && row.mode !== "plus_jev"))
+          throw Error("Malformed analysis case metadata.");
+        if (group === "runs" && (!("category" in row) || typeof row.category !== "string" || !row.category ||
+          !("expected" in row) || typeof row.expected !== "string" || !["permit", "proposal_only", "reject", "unavailable"].includes(row.expected)))
+          throw Error("Malformed analysis label metadata.");
         const key = JSON.stringify([row.fixtureId, row.arm, row.mode]);
         if (seen.has(key)) throw Error(`Duplicate ${group === "runs" ? "label row" : "receipt"} in logical run ${run + 1}.`);
         seen.add(key);
       }
     }
+    const localLabels = new Set(file.runs.filter(row => row.mode === "plus_jev").map(row => caseKey(row.fixtureId, row.arm)));
+    for (const receipt of file.receipts) {
+      if (receipt.mode === "plus_jev" && !localLabels.has(caseKey(receipt.fixtureId, receipt.arm)))
+        throw Error("Reviewed receipt is missing its logical-run label.");
+    }
     for (const row of file.runs) {
       if (row.mode !== "plus_jev") continue;
-      const key = `${row.fixtureId}\u0000${row.arm}`;
+      const key = caseKey(row.fixtureId, row.arm);
       const list = labels.get(key) ?? [];
       list.push({ run, at: file.at, expected: row.expected, category: row.category });
       labels.set(key, list);
@@ -121,7 +134,7 @@ function collectLogicalRuns(files: readonly RunFile[]): { observations: Observat
     const latest = [...list].sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).at(-1)!;
     resolved.set(key, { expected: latest.expected, category: latest.category });
     if (new Set(list.map(l => l.expected)).size > 1) {
-      const [fixtureId, arm] = key.split("\u0000") as [string, string];
+      const [fixtureId, arm] = JSON.parse(key) as [string, string];
       conflicts.push({ fixtureId, arm, labels: list.map(({ run, expected }) => ({ run, expected })), used: latest.expected });
     }
   }
@@ -131,7 +144,7 @@ function collectLogicalRuns(files: readonly RunFile[]): { observations: Observat
     for (const r of file.receipts) {
       if (r.mode !== "plus_jev") continue;
       if (!r.jev || !r.jev.answers) { skipped++; continue; }
-      const label = resolved.get(`${r.fixtureId}\u0000${r.arm}`);
+      const label = resolved.get(caseKey(r.fixtureId, r.arm));
       if (!label) throw Error(`No plus_jev label for ${r.fixtureId}/${r.arm}`);
       if (r.arm !== "good" && r.arm !== "bad") throw Error(`Unknown arm ${r.arm}`);
       const answers = {} as Record<ReviewQuestionId, RunAnswer>;

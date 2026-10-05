@@ -39,6 +39,10 @@ and fractional seconds. Equal instants preserve input order, with the last
 input's correction winning. Invalid timestamps and duplicate case/mode labels
 or receipts within a logical run are rejected before analysis; repetitions
 remain separate observations. Historical correction conflicts stay visible.
+Each reviewed receipt must have a label in its own logical run, including
+unanswered receipts. Cross-run corrections cannot supply missing local labels.
+Unknown modes, arms, label verdicts and empty case metadata are rejected before
+filtering instead of silently disappearing from the analysis.
 
 Only synthetic task, files, evidence and proposal fields reach Jev. Labels and
 mock values stay in evaluation metadata. The host retains sanitized response
