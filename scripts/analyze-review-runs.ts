@@ -67,6 +67,8 @@ function classify(arm: string, expected: string): ArmClass {
 /** Preserve legacy order and reject incomplete indexing before any rows are filtered. */
 function logicalRuns(files: readonly RunFile[]): RunFile[] {
   return files.flatMap(file => {
+    if (typeof file.at !== "string" || !Number.isFinite(Date.parse(file.at)))
+      throw Error("Run artifact needs a valid at timestamp for chronological label reconciliation.");
     const entries = [...file.runs, ...file.receipts];
     const hasPlan = Object.hasOwn(file, "repetitions");
     if (!hasPlan && !entries.some(row => Object.hasOwn(row, "runIndex"))) return [file];
@@ -96,6 +98,14 @@ export function collect(files: readonly RunFile[]): { observations: Observation[
 function collectLogicalRuns(files: readonly RunFile[]): { observations: Observation[]; conflicts: LabelConflict[]; skipped: number } {
   const labels = new Map<string, Array<{ run: number; at: string; expected: string; category: string }>>();
   files.forEach((file, run) => {
+    for (const group of ["runs", "receipts"] as const) {
+      const seen = new Set<string>();
+      for (const row of file[group]) {
+        const key = JSON.stringify([row.fixtureId, row.arm, row.mode]);
+        if (seen.has(key)) throw Error(`Duplicate ${group === "runs" ? "label row" : "receipt"} in logical run ${run + 1}.`);
+        seen.add(key);
+      }
+    }
     for (const row of file.runs) {
       if (row.mode !== "plus_jev") continue;
       const key = `${row.fixtureId}\u0000${row.arm}`;
@@ -107,7 +117,8 @@ function collectLogicalRuns(files: readonly RunFile[]): { observations: Observat
   const resolved = new Map<string, { expected: string; category: string }>();
   const conflicts: LabelConflict[] = [];
   for (const [key, list] of labels) {
-    const latest = [...list].sort((a, b) => a.at.localeCompare(b.at)).at(-1)!;
+    // Equal instants retain input order, so the last recorded correction wins.
+    const latest = [...list].sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).at(-1)!;
     resolved.set(key, { expected: latest.expected, category: latest.category });
     if (new Set(list.map(l => l.expected)).size > 1) {
       const [fixtureId, arm] = key.split("\u0000") as [string, string];

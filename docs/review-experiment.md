@@ -34,6 +34,12 @@ attempts, response status, host latency, and independently nullable input/output
 usage. The analyzer treats each indexed repetition as a separate run. Compare
 candidate profiles separately; pooling different questions is not repeatability.
 
+Label corrections use the latest timestamp instant, including timezone offsets
+and fractional seconds. Equal instants preserve input order, with the last
+input's correction winning. Invalid timestamps and duplicate case/mode labels
+or receipts within a logical run are rejected before analysis; repetitions
+remain separate observations. Historical correction conflicts stay visible.
+
 Only synthetic task, files, evidence and proposal fields reach Jev. Labels and
 mock values stay in evaluation metadata. The host retains sanitized response
 fields and generic failure classifications, never keys or provider error bodies.

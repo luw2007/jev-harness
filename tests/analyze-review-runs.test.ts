@@ -114,6 +114,65 @@ test("later labels win, conflicts are reported, and unanswered receipts are skip
   assert.ok(observations.filter(o => o.fixtureId === "ask-good").every(o => o.cls === "good_clarify"));
 });
 
+test("latest label uses chronological instants across offsets and fractional timestamps", () => {
+  for (const [earlier, later] of [
+    ["2026-01-01T01:00:00+01:00", "2026-01-01T00:30:00Z"],
+    ["2026-01-01T00:00:00Z", "2026-01-01T00:00:00.001Z"],
+  ]) {
+    const first = run(earlier!, "permit", 0.7, 0.45);
+    const second = run(later!, "proposal_only", 0.9, 0.55);
+    for (const inputs of [[first, second], [second, first]]) {
+      const result = collect(inputs);
+      assert.equal(result.conflicts[0]!.used, "proposal_only");
+      assert.ok(result.observations.filter(o => o.fixtureId === "ask-good").every(o => o.cls === "good_clarify"));
+    }
+  }
+});
+
+test("equal timestamp instants keep the last input's correction", () => {
+  const first = run("2026-01-01T01:00:00+01:00", "permit", 0.7, 0.45);
+  const second = run("2026-01-01T00:00:00.000Z", "proposal_only", 0.9, 0.55);
+  assert.equal(collect([first, second]).conflicts[0]!.used, "proposal_only");
+  assert.equal(collect([second, first]).conflicts[0]!.used, "permit");
+});
+
+test("invalid artifact timestamps fail before answered or unanswered rows are analyzed", () => {
+  for (const at of ["", "invalid-date", "2026-13-01T00:00:00Z", null, undefined, 7]) {
+    for (const file of [run(files[0]!.at, "permit", 0.7, 0.45), repeated()]) {
+      (file as { at: unknown }).at = at;
+      assert.throws(() => collect([file]), /valid at timestamp/);
+      assert.throws(() => analyze([file]), /valid at timestamp/);
+      file.receipts.forEach(receipt => { receipt.jev = null; });
+      assert.throws(() => collect([file]), /valid at timestamp/);
+    }
+  }
+});
+
+test("duplicate label rows and receipts are refused within each logical run", () => {
+  const duplicate = <T extends { fixtureId: string; arm: string; mode: string; runIndex?: number }>(rows: T[], mode: string) => {
+    const row = { ...rows[0]!, mode };
+    // Add a new mode if it was absent, then duplicate that same identity.
+    if (!rows.some(entry => entry.fixtureId === row.fixtureId && entry.arm === row.arm && entry.mode === mode && entry.runIndex === row.runIndex))
+      rows.push(row);
+    rows.push({ ...row });
+  };
+  for (const indexed of [false, true]) {
+    for (const group of ["runs", "receipts"] as const) {
+      for (const mode of ["base", "plus_jev"]) {
+        const file: RunFile = indexed ? repeated() : run(files[0]!.at, "permit", 0.7, 0.45);
+        if (group === "runs") duplicate(file.runs, mode);
+        else duplicate(file.receipts, mode);
+        assert.throws(() => collect([file]), /Duplicate (label row|receipt) in logical run/);
+        assert.throws(() => analyze([file]), /Duplicate (label row|receipt) in logical run/);
+      }
+    }
+  }
+  const unanswered = run(files[0]!.at, "permit", 0.7, 0.45);
+  unanswered.receipts[0]!.jev = null;
+  unanswered.receipts.push({ ...unanswered.receipts[0]! });
+  assert.throws(() => collect([unanswered]), /Duplicate receipt/);
+});
+
 test("miss separates direction from confidence for canonical recorded answers", () => {
   assert.equal(miss("unrelated_changes", answer(0.6), 0.8), "direction");
   assert.equal(miss("addresses_task", answer(0.7), 0.8), "confidence");
