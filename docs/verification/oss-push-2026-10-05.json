@@ -1,0 +1,150 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-05T02:37:51.066Z",
+  "repository": "https://github.com/luw2007/jev-harness",
+  "destination": "oss/main",
+  "upstreamBase": "1239b23052b701e690727755cf17ea90c92654ff",
+  "verifiedHead": "ee8c089a7e9fa97c138e0b738437cd782f92c0e6",
+  "upstreamUpdates": [
+    "1239b23052b701e690727755cf17ea90c92654ff Build(deps): Bump actions/upload-artifact from 4.6.2 to 7.0.1 (#54)",
+    "a1d4cc6eeb59b2ebb5d59c45c857d9368f89120d Build(deps-dev): Bump the dev-dependencies group with 2 updates (#55)"
+  ],
+  "originalOptimization": {
+    "base": "44a4e3a17013b6458efd4cc2b3e8ca45efae60b8",
+    "head": "7961e418206d7a85c1ec431af596b32485ad4d0e",
+    "commits": 14
+  },
+  "rebase": {
+    "patchesUnchanged": true,
+    "mapping": [
+      {
+        "original": "b15ca7999ae87b66b282ce6abdef2722f1ead1ee",
+        "rebased": "2c4911ac9d0c3e5a1f1103ac5288fd82e1ee7eb4"
+      },
+      {
+        "original": "2aa2b3bf93c08c02026cdccceef009791930bef4",
+        "rebased": "8e2ee71a308fd35069a67b1542067b50d3fd5e61"
+      },
+      {
+        "original": "9c2e4d7da79f8856e77205d72a88f7e6404df54e",
+        "rebased": "e387dd86378e25c70bc6538df1702723d54f505f"
+      },
+      {
+        "original": "cd8179db99b39b5389751fb3ab0bc8a946674fcf",
+        "rebased": "d27b44609ea43fa78ae1ec427debfb248d20bfb7"
+      },
+      {
+        "original": "cbd4ff9f00e0f3045a191b62e8cca6f0c8b847cf",
+        "rebased": "16d6485067d0412853751e41697cc886fa864ffd"
+      },
+      {
+        "original": "b9aa05a35f54783b2ddc46ef1cf6b469fe4e0453",
+        "rebased": "23503ccf0663c3ec382d36b228522e531e274d1e"
+      },
+      {
+        "original": "b77c7fdd8d044ab9d9195814d9178ea3ce13d004",
+        "rebased": "12b1b5c502cdbbfdeeb8f1e66d99eaf686542acc"
+      },
+      {
+        "original": "21baef74cca99bf61f5f7bbf059b12b9cb491f99",
+        "rebased": "1c0cbf6d2d2986cb18a14efe58a1b73fb1a8c6db"
+      },
+      {
+        "original": "fc35d5015eecb5fcff1b226d2b79c564ae2ffb2f",
+        "rebased": "744a7045e1467cb81fb7c9ab694b3491c5853945"
+      },
+      {
+        "original": "3ab4b004ff140267180a4df37be73770c403ebb6",
+        "rebased": "c2428309e17f08585942fca4d60c7ab9fc0a556c"
+      },
+      {
+        "original": "58d18dd935be224647d7bf3a5ed10f9a238eaee7",
+        "rebased": "5c385b4c233232a54ff35797212731ed8b985960"
+      },
+      {
+        "original": "61d605631eb03f23c36d6448428c4189c496e7bc",
+        "rebased": "00ba078e32d191d74f61ed4cfb1c17c788612819"
+      },
+      {
+        "original": "469cbc75d0d8ec46a72fbd1fb490ab83ce688f58",
+        "rebased": "edea05ee14091b5f29209bb13819d52e222691c9"
+      },
+      {
+        "original": "7961e418206d7a85c1ec431af596b32485ad4d0e",
+        "rebased": "ee8c089a7e9fa97c138e0b738437cd782f92c0e6"
+      }
+    ],
+    "signaturesValid": true
+  },
+  "historicalRecords": [
+    {
+      "path": "docs/verification/autonomous-optimization-2026-10-05.json",
+      "sha256": "a119a4d46a48084cfbf31f5a4f3e09d7b1dcf9264a49d58f1e0478f9aa2ae956",
+      "interpretation": "Original local run provenance retained; use rebase mapping for equivalent optimization patches. These original runs did not use the new dependency versions."
+    },
+    {
+      "path": "docs/verification/autonomous-optimization-continuation-2026-10-05.json",
+      "sha256": "557afa04f1715144b0a1ca72098a3c8facd3ce3e5ed703aefac4876994088a6e",
+      "interpretation": "Original local run provenance retained; use rebase mapping for equivalent optimization patches. These original runs did not use the new dependency versions."
+    },
+    {
+      "path": "docs/verification/autonomous-optimization-data-integrity-2026-10-05.json",
+      "sha256": "921dabd46b5ec4c4ea82f890c4121c01feb8101a9175bd05e7a51fad2c36bec9",
+      "interpretation": "Original local run provenance retained; use rebase mapping for equivalent optimization patches. These original runs did not use the new dependency versions."
+    }
+  ],
+  "toolchain": {
+    "node": "v26.9.0",
+    "pnpm": "pnpm@10.34.5",
+    "devDependencies": {
+      "@types/node": "26.6.3",
+      "@types/react": "19.3.0",
+      "@types/react-dom": "19.3.0",
+      "tsx": "4.23.15",
+      "typescript": "7.0.2"
+    },
+    "packageSha256": "fcbd858bc6da6e5561e95d925d203d883d665cc0d1fc697d7b4909e1f295870e",
+    "lockfileSha256": "afdd3c1939e2484fbc3d06e3ab8efaeae4641995be1ce81e0fa7ec8d6bf80ba8"
+  },
+  "checks": {
+    "install": {
+      "command": "pnpm install --frozen-lockfile --ignore-workspace --store-dir /private/tmp/jev-harness-pnpm-store",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "command": "pnpm typecheck",
+      "exitCode": 0
+    },
+    "tests": {
+      "command": "pnpm test",
+      "exitCode": 0,
+      "passed": 338,
+      "failed": 0,
+      "logSha256": "8836ba8096394411b1505500be7f927fbadc46b639bcd7cadfe9a4494b2db463"
+    },
+    "build": {
+      "command": "NEXT_TELEMETRY_DISABLED=1 pnpm build",
+      "exitCode": 0,
+      "logSha256": "31fd2711ecd30c9519a36e37a5f91503d1c4e916931f7b7a998003f9d8fc47de"
+    },
+    "secrets": {
+      "builtIn": "node scripts/check-secrets.mjs --all",
+      "fullHistory": "gitleaks git --no-banner --redact --exit-code 1 .",
+      "exitCode": 0
+    },
+    "preserved": {
+      "optimizationChangesToDependencies": false,
+      "contractAndRoutingSourceUnchanged": true,
+      "modelAndQuestionSetsUnchanged": true,
+      "fixturesUnchanged": true
+    },
+    "independentReview": "No pre-push blocker; original optimization source boundaries, record references and recorded file hashes checked."
+  },
+  "limitations": [
+    "Local integration checks, not remote CI or deployment evidence.",
+    "Historical verification is preserved rather than relabeled as new post-rebase measurements.",
+    "No provider calls or proposed-source execution occurred."
+  ],
+  "upstreamRepository": "https://github.com/TypeSafeAI/jev-harness",
+  "destinationDecision": "Authenticated account has read-only upstream access; publish the identical optimization changes to its public same-project fork."
+}
