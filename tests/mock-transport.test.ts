@@ -56,3 +56,18 @@ test("identical duplicate mock scripts still answer from the proposal alone", as
     }
   }
 });
+
+test("mock scripts are detached from later fixture edits and transport callbacks", async () => {
+  const source = structuredClone(fixture);
+  const payload = buildReviewPayload(source, source.proposals.good);
+  const recorded = { ...source.mock.good };
+  const transport = createMockTransport([source], { failFor: () => {
+    source.mock.good.evidence_supports = 0.1;
+    return null;
+  } });
+  source.mock.good.addresses_task = 0.1;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const answers = parseReviewAnswers(await transport(payload));
+    for (const id of REVIEW_QUESTION_IDS) assert.equal(answers[id].probability, recorded[id]);
+  }
+});

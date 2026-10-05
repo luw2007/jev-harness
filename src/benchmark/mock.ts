@@ -35,7 +35,7 @@ export function createMockTransport(
       const previous = table.get(proposalKey);
       if (previous && REVIEW_QUESTION_IDS.some(id => previous[id] !== scripted[id]))
         throw Error("Mock transport has conflicting scripted answers for the same proposal.");
-      table.set(proposalKey, scripted);
+      table.set(proposalKey, { ...scripted });
     }
   return async (payload, signal) => {
     if (signal?.aborted) throw Error("Mock transport cancelled.");
