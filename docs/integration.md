@@ -101,6 +101,11 @@ After a simulation, open **Check the answers before comparing performance**, mar
 
 The browser cache retains up to 30 runs within 2 MB; annotations are separately bounded to 30 entries and pruned to current history IDs whenever an assessment is saved. Export evidence before clearing or exceeding retention. Clearing history also clears assessments, preserving Usage and the key override. Use your host's protected store for a lasting evaluation history; the Arena does not import arbitrary production runs or execute the copied prompt.
 
+Queued assessment writes read current History inside the storage lock. Reviews
+for runs added during the wait are retained, while a removed target run or
+unreadable History prevents the save and leaves the draft and prior annotations
+available.
+
 ## Rollout and rollback
 
 Ship the adapter behind an explicit host mode flag. Test malformed/out-of-set evidence, outage, empty availability, every routing outcome, abort, late results, changed grants and argument validation with fake transports. Verify that all alternate dispatch paths enforce the same host policy. Start with synthetic or explicitly consented shadow observations, evaluate a bounded lean pilot, then widen only when the predeclared quality and overhead criteria hold. Keep a deliberate baseline configuration as rollback; never silently change mode after provider failure. Record each change in setup identity and its linked evidence.

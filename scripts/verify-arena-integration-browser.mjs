@@ -95,6 +95,60 @@ export async function verifyArenaIntegration(page, baseURL, screenshotDir) {
     check((await page.evaluate(id => JSON.parse(localStorage.getItem("jev-arena-assessments-v1")).entries.find(e => e.runId === id).note, artifact.id)) === "Newer queued-write note" && await page.getByLabel("Next experiment or evidence note").inputValue() === "Queued local draft", "a queued stale save preserves the newer stored assessment and the unsaved draft");
     check(!(await page.locator("dialog[open]").textContent()).includes("Assessment saved locally") && await page.getByRole("button", { name: "Save assessment", exact: true }).isDisabled(), "a rejected queued save never reports success and requires conflict resolution");
     await page.getByRole("button", { name: "Reload saved assessment", exact: true }).click();
+    await page.getByLabel("Next experiment or evidence note").fill("Keep newer runs while saving this note");
+    await other.evaluate(() => { window.__lockHeld = false; navigator.locks.request("jev-arena-assessments-v1", async () => { window.__lockHeld = true; await new Promise(resolve => { window.__releaseLock = resolve; }); }); });
+    await other.waitForFunction(() => window.__lockHeld);
+    await page.getByRole("button", { name: "Save assessment", exact: true }).click();
+    await page.getByRole("button", { name: "Saving…", exact: true }).waitFor();
+    await other.evaluate(() => {
+      const historyKey = "jev-arena-history-v1", assessmentKey = "jev-arena-assessments-v1";
+      const history = JSON.parse(localStorage.getItem(historyKey)), assessments = JSON.parse(localStorage.getItem(assessmentKey));
+      const runId = "new-run-during-queued-save";
+      history.runs.unshift({ ...history.runs[0], id: runId });
+      localStorage.setItem(historyKey, JSON.stringify(history));
+      assessments.entries.unshift({ runId, baseline: "pass", integrated: "pass", note: "Other tab's new review", updatedAt: new Date().toISOString() });
+      localStorage.setItem(assessmentKey, JSON.stringify(assessments));
+      window.__releaseLock();
+    });
+    await page.getByText("Assessment saved locally. It is included in downloads and History.", { exact: true }).waitFor();
+    check(await page.evaluate(() => JSON.parse(localStorage.getItem("jev-arena-assessments-v1")).entries.some(entry => entry.runId === "new-run-during-queued-save")), "queued assessment saves retain reviews for runs added while waiting for the lock");
+    await page.getByLabel("Next experiment or evidence note").fill("Draft retained while History is unreadable");
+    await other.evaluate(() => { window.__lockHeld = false; navigator.locks.request("jev-arena-assessments-v1", async () => { window.__lockHeld = true; await new Promise(resolve => { window.__releaseLock = resolve; }); }); });
+    await other.waitForFunction(() => window.__lockHeld);
+    await page.getByRole("button", { name: "Save assessment", exact: true }).click();
+    await page.getByRole("button", { name: "Saving…", exact: true }).waitFor();
+    const unreadableSnapshot = await other.evaluate(() => {
+      const history = localStorage.getItem("jev-arena-history-v1"), assessments = localStorage.getItem("jev-arena-assessments-v1");
+      localStorage.setItem("jev-arena-history-v1", "unreadable synthetic history");
+      window.__releaseLock();
+      return { history, assessments };
+    });
+    await page.getByRole("button", { name: "Saving…", exact: true }).waitFor({ state: "hidden" });
+    check(await page.evaluate(() => localStorage.getItem("jev-arena-assessments-v1")) === unreadableSnapshot.assessments &&
+      (await page.locator("dialog[open]").textContent()).includes("History could not be read") &&
+      await page.getByLabel("Next experiment or evidence note").inputValue() === "Draft retained while History is unreadable",
+      "unreadable History prevents queued pruning and preserves existing assessments and the draft");
+    await other.evaluate(history => localStorage.setItem("jev-arena-history-v1", history), unreadableSnapshot.history);
+    await page.getByRole("button", { name: "Save assessment", exact: true }).waitFor({ state: "visible" });
+    await page.waitForFunction(() => !document.querySelector('.arena-assessment button[type="submit"]').disabled);
+    await page.getByLabel("Next experiment or evidence note").fill("Draft for a run removed during the lock wait");
+    await other.evaluate(() => { window.__lockHeld = false; navigator.locks.request("jev-arena-assessments-v1", async () => { window.__lockHeld = true; await new Promise(resolve => { window.__releaseLock = resolve; }); }); });
+    await other.waitForFunction(() => window.__lockHeld);
+    await page.getByRole("button", { name: "Save assessment", exact: true }).click();
+    await page.getByRole("button", { name: "Saving…", exact: true }).waitFor();
+    const assessmentsBeforeRemoval = await other.evaluate(id => {
+      const key = "jev-arena-history-v1", history = JSON.parse(localStorage.getItem(key));
+      history.runs = history.runs.filter(run => run.id !== id);
+      localStorage.setItem(key, JSON.stringify(history));
+      const assessments = localStorage.getItem("jev-arena-assessments-v1");
+      window.__releaseLock();
+      return assessments;
+    }, artifact.id);
+    await page.getByRole("button", { name: "Saving…", exact: true }).waitFor({ state: "hidden" });
+    check(await page.evaluate(() => localStorage.getItem("jev-arena-assessments-v1")) === assessmentsBeforeRemoval &&
+      !(await page.locator("dialog[open]").textContent()).includes("Assessment saved locally") &&
+      await page.getByLabel("Next experiment or evidence note").inputValue() === "Draft for a run removed during the lock wait",
+      "queued saves reject removed runs while preserving stored assessments and the unsaved draft");
     await close(); await other.close();
     failed = true; await run(); await openAssessment(); check(await group("With Jev").getByRole("radio", { name: "Meets task", exact: true }).isDisabled(), "a failed lane cannot be marked Meets task through the UI"); await close();
     await page.evaluate(() => localStorage.setItem("typesafe-api-key-override", "synthetic-ui-override"));
