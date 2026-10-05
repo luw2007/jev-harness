@@ -341,4 +341,13 @@ This writes `examples/routing/runs/<date>-experiment.json` (it refuses to overwr
 
 Ctrl-C or termination aborts the active request or Codex child, waits for cleanup, and saves completed and interrupted trials with `status: "cancelled"`. The table labels these as partial results; planned repetitions are not completed repetitions. The CLI exits with 130 for SIGINT or 143 for SIGTERM.
 
+Cancellation is checked immediately before each proposer dispatch, including
+routing without prerequisites. If no proposer was dispatched, its input proxy
+and exposed tool count are zero. New artifacts mark that case with
+`proposer.dispatched: false`; replay requires a cancelled artifact and empty
+usage, tool and answer evidence for that marker. Historical dispatched
+cancellations retain their original menu and interpretation. A late response
+from an adapter that ignored cancellation retains
+reported usage and tool evidence but remains cancelled and incorrect.
+
 `--table` checks canonical task/catalog metadata, pinned request fields, finite measurements and consistent trial outcomes before recomputing its summary. Invalid or contradictory artifacts are rejected. These checks establish structural consistency, not the provenance or authenticity of a claimed live run.

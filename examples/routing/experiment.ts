@@ -89,7 +89,9 @@ export interface Trial {
     providerRequests?: number | null; observedProviderRequests?: number; attemptLedger?: JevAttemptLedger | null;
     reported: { input: number | null; output: number | null } | null;
   };
-  proposer: null | { status: ProposerResult["status"]; calledToolIds: string[]; traceTruncated: boolean; durationMs: number; reported: { input: number | null; cachedInput: number | null; output: number | null }; error: string | null; answer?: string; toolCalls?: ToolCall[] };
+  proposer: null | { status: ProposerResult["status"]; calledToolIds: string[]; traceTruncated: boolean; durationMs: number; reported: { input: number | null; cachedInput: number | null; output: number | null }; error: string | null; answer?: string; toolCalls?: ToolCall[];
+    /** New pre-dispatch cancellation marker; absent for dispatched and historical attempts. */
+    dispatched?: false };
   outcome: TrialOutcome;
   firstToolId: string | null;
   proxies: { proposerInputTokens: number; jevRequestTokens: number; jevPhysicalRequestTokens?: number; totalInputTokens: number };
@@ -105,13 +107,17 @@ function proposerProxy(input: ProposerInput) {
 }
 
 async function runProposer(deps: ExperimentDeps, input: ProposerInput, now: () => number) {
+  if (deps.signal?.aborted) return { dispatched: false, proposer: {
+    status: "cancelled" as const, dispatched: false as const, calledToolIds: [], traceTruncated: false, durationMs: 0,
+    reported: { input: 0, cachedInput: 0, output: 0 }, error: "Proposer cancelled before dispatch.",
+  } };
   const start = now();
   let result: ProposerResult;
   try { result = await deps.proposer.propose(input, deps.signal); }
   catch { result = { status: "failed", calledToolIds: [], traceTruncated: false, inputTokens: null, cachedInputTokens: null, outputTokens: null, error: "Proposer adapter failed." }; }
-  return { status: result.status, calledToolIds: [...result.calledToolIds], traceTruncated: result.traceTruncated, durationMs: now() - start, reported: { input: result.inputTokens, cachedInput: result.cachedInputTokens, output: result.outputTokens }, error: result.error,
+  return { dispatched: true, proposer: { status: deps.signal?.aborted ? "cancelled" as const : result.status, calledToolIds: [...result.calledToolIds], traceTruncated: result.traceTruncated, durationMs: now() - start, reported: { input: result.inputTokens, cachedInput: result.cachedInputTokens, output: result.outputTokens }, error: deps.signal?.aborted ? "Proposer cancelled." : result.error,
     ...(result.answer === undefined ? {} : { answer: result.answer.slice(0, 20_000) }),
-    ...(result.toolCalls === undefined ? {} : { toolCalls: structuredClone(result.toolCalls.slice(0, 100)) }) };
+    ...(result.toolCalls === undefined ? {} : { toolCalls: structuredClone(result.toolCalls.slice(0, 100)) }) } };
 }
 function proposerOutcome(p: NonNullable<Trial["proposer"]>): TrialOutcome {
   return p.status !== "completed" ? "proposer_failed" : p.calledToolIds.length ? "tool_called" : "no_tool_call";
@@ -124,9 +130,9 @@ export async function runTrial(task: ExperimentTask, arm: Arm, run: number, orde
   const base = { run, taskId: task.id, baseId: task.baseId, size: task.size, catalogSize: available.length, arm, order };
   if (arm === "all_tools") {
     const input = proposerInput(task, available);
-    const proposer = await runProposer(deps, input, now);
-    const proposerInputTokens = proposerProxy(input);
-    return { ...base, exposedToolIds: available.map(t => t.id), routing: null, proposer, outcome: proposerOutcome(proposer), firstToolId: proposer.calledToolIds[0] ?? null,
+    const { proposer, dispatched } = await runProposer(deps, input, now);
+    const proposerInputTokens = dispatched ? proposerProxy(input) : 0;
+    return { ...base, exposedToolIds: dispatched ? available.map(t => t.id) : [], routing: null, proposer, outcome: proposerOutcome(proposer), firstToolId: proposer.calledToolIds[0] ?? null,
       proxies: { proposerInputTokens, jevRequestTokens: 0, ...(deps.routingTransport ? { jevPhysicalRequestTokens: 0 } : {}), totalInputTokens: proposerInputTokens } };
   }
   const handle = deps.routerFor(task.id);
@@ -161,9 +167,9 @@ export async function runTrial(task: ExperimentTask, arm: Arm, run: number, orde
   const selectedIds = handoff?.context.state.loadedIds ?? receipt.selectedIds;
   const selected = EXPERIMENT_CATALOG.filter(t => selectedIds.includes(t.id));
   const input = proposerInput(task, selected);
-  const proposer = await runProposer(deps, input, now);
-  const proposerInputTokens = proposerProxy(input);
-  return { ...base, ...bundle, exposedToolIds: selected.map(t => t.id), routing, proposer, outcome: proposerOutcome(proposer), firstToolId: proposer.calledToolIds[0] ?? null,
+  const { proposer, dispatched } = await runProposer(deps, input, now);
+  const proposerInputTokens = dispatched ? proposerProxy(input) : 0;
+  return { ...base, ...bundle, exposedToolIds: dispatched ? selected.map(t => t.id) : [], routing, proposer, outcome: proposerOutcome(proposer), firstToolId: proposer.calledToolIds[0] ?? null,
     proxies: { proposerInputTokens, jevRequestTokens, ...(deps.routingTransport ? { jevPhysicalRequestTokens: physicalProxy } : {}), totalInputTokens: proposerInputTokens + (deps.routingTransport ? physicalProxy : jevRequestTokens) } };
 }
 
@@ -416,8 +422,14 @@ export async function parseExperimentArtifact(raw: unknown): Promise<ExperimentA
     if (!isObj(t.proxies) || ![t.proxies.proposerInputTokens, t.proxies.jevRequestTokens, t.proxies.totalInputTokens].every(count) || t.proxies.totalInputTokens !== Number(t.proxies.proposerInputTokens) + Number(transport ? t.proxies.jevPhysicalRequestTokens : t.proxies.jevRequestTokens)) return fail(`trial ${i} proxies`);
     if (transport ? !count(t.proxies.jevPhysicalRequestTokens) : t.proxies.jevPhysicalRequestTokens !== undefined) fail(`trial ${i} physical proxies`);
     const proposer = t.proposer, routing = t.routing;
+    let undispatched = false;
     if (proposer !== null) {
       if (!isObj(proposer) || !["completed", "failed", "cancelled"].includes(proposer.status as string) || !ids(proposer.calledToolIds, undefined, false) || proposer.calledToolIds.length > 100 || typeof proposer.traceTruncated !== "boolean" || !finite(proposer.durationMs) || !isObj(proposer.reported) || ![proposer.reported.input, proposer.reported.cachedInput, proposer.reported.output].every(nullableCount) || (proposer.error !== null && typeof proposer.error !== "string")) return fail(`trial ${i} proposer`);
+      if (proposer.dispatched !== undefined && proposer.dispatched !== false) fail(`trial ${i} proposer dispatch marker`);
+      undispatched = proposer.dispatched === false;
+      if (undispatched && (a.status !== "cancelled" || proposer.status !== "cancelled" || proposer.durationMs !== 0 || proposer.traceTruncated || proposer.calledToolIds.length !== 0 ||
+        proposer.reported.input !== 0 || proposer.reported.cachedInput !== 0 || proposer.reported.output !== 0 || proposer.answer !== undefined || proposer.toolCalls !== undefined ||
+        t.proxies.proposerInputTokens !== 0 || exposedIds.length !== 0)) fail(`trial ${i} undispatched cancellation`);
       if (proposer.reported.input !== null && proposer.reported.cachedInput !== null && Number(proposer.reported.cachedInput) > Number(proposer.reported.input)) fail(`trial ${i} cached usage`);
       if (proposer.traceTruncated && proposer.calledToolIds.length !== 100) fail(`trial ${i} truncated trace length`);
       if (proposer.answer !== undefined && (typeof proposer.answer !== "string" || proposer.answer.length > 20_000)) fail(`trial ${i} answer`);
@@ -434,7 +446,7 @@ export async function parseExperimentArtifact(raw: unknown): Promise<ExperimentA
       if (t.outcome !== outcome || t.firstToolId !== (proposer.calledToolIds[0] ?? null)) fail(`trial ${i} outcome/proposer mismatch`);
     } else if (t.firstToolId !== null || !["routed_clarification", "routing_unavailable", "context_withheld"].includes(t.outcome as string) || !isObj(t.proxies) || t.proxies.proposerInputTokens !== 0) fail(`trial ${i} absent proposer`);
     if (t.arm === "all_tools") {
-      if (routing !== null || proposer === null || t.bundle !== undefined || !sameIds(t.exposedToolIds, available) || !isObj(t.proxies) || t.proxies.jevRequestTokens !== 0 || (transport && t.proxies.jevPhysicalRequestTokens !== 0)) fail(`trial ${i} arm/routing mismatch`);
+      if (routing !== null || proposer === null || t.bundle !== undefined || !sameIds(t.exposedToolIds, undispatched ? [] : available) || !isObj(t.proxies) || t.proxies.jevRequestTokens !== 0 || (transport && t.proxies.jevPhysicalRequestTokens !== 0)) fail(`trial ${i} arm/routing mismatch`);
       continue;
     }
     if (!isObj(routing) || !["selected", "needs_clarification", "no_match", "unavailable"].includes(routing.outcome as string) || !ids(routing.selectedIds, available) || !ids(routing.optionIds) || !sameIds(routing.optionIds, [...available, CLARIFICATION_ID]) || routing.source !== (a.source === "fake" ? "mock" : "jev") || !text(routing.reason) || !count(routing.jevCalls) || routing.jevCalls > 1 || !(routing.latencyMs === null || finite(routing.latencyMs)) || (routing.reported !== null && (!isObj(routing.reported) || ![routing.reported.input, routing.reported.output].every(nullableCount)))) return fail(`trial ${i} routing`);
@@ -496,7 +508,7 @@ export async function parseExperimentArtifact(raw: unknown): Promise<ExperimentA
       handoffReady = expected.status === "ready";
       expectedIds = handoff.context.state.loadedIds;
     } else if (t.bundle !== undefined) fail(`trial ${i} bundle without config`);
-    if (handoffReady !== (proposer !== null) || !sameIds(t.exposedToolIds, expectedIds)) fail(`trial ${i} routing/exposure mismatch`);
+    if (handoffReady !== (proposer !== null) || !sameIds(t.exposedToolIds, undispatched ? [] : expectedIds)) fail(`trial ${i} routing/exposure mismatch`);
     if (proposer === null && t.outcome !== (routing.outcome === "unavailable" ? "routing_unavailable" : routing.outcome === "selected" ? "context_withheld" : "routed_clarification")) fail(`trial ${i} routing/outcome mismatch`);
   }
   return raw as unknown as ExperimentArtifact;
