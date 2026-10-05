@@ -2,7 +2,7 @@
 import type { RunPayload } from "../../src/contract/payload.js";
 import { JEV_MODEL, REVIEW_QUESTION_IDS, type JevTransport } from "../../src/contract/types.js";
 import { MOCK_MODEL } from "../../src/benchmark/mock.js";
-import { boundedText, JEV_SYSTEMONE_URL } from "./jev-choice.js";
+import { boundedOperation, boundedTextResult, JEV_SYSTEMONE_URL } from "./jev-choice.js";
 
 export interface ReviewMeasurement {
   dispatched: boolean;
@@ -45,17 +45,20 @@ export function createReviewHttpTransport(options: { key: string; fetch?: typeof
     try {
       requestSignal.throwIfAborted();
       measurement.dispatched = true;
-      const result = await upstreamFetch(JEV_SYSTEMONE_URL, { method: "POST", headers: { Authorization: `Bearer ${options.key}`, "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: requestSignal, redirect: "error" });
+      const pending = upstreamFetch(JEV_SYSTEMONE_URL, { method: "POST", headers: { Authorization: `Bearer ${options.key}`, "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: requestSignal, redirect: "error" }).then(result => {
+        if (requestSignal.aborted) void result.body?.cancel().catch(() => {});
+        return result;
+      });
+      const result = await boundedOperation(pending, requestSignal);
       measurement.httpStatus = result.status;
       if (!result.ok) {
         measurement.failure = "http_error";
-        await result.body?.cancel();
+        void result.body?.cancel().catch(() => {});
         throw Error();
       }
       let text: string;
-      try { text = await boundedText(result.body, 64_000); }
+      try { const content = await boundedTextResult(result.body, 64_000, requestSignal); text = content.text; measurement.responseBytes = content.bytes; }
       catch { measurement.failure = "malformed_response"; throw Error(); }
-      measurement.responseBytes = Buffer.byteLength(text, "utf8");
       let raw: unknown;
       try { raw = JSON.parse(text); }
       catch { measurement.failure = "malformed_response"; throw Error(); }

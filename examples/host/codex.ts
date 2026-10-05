@@ -56,6 +56,7 @@ export async function runCodex(fixture: CliFixture, tools: readonly CliTool[], s
     const result = await new Promise<CliResult>(resolveResult => {
       const child = spawn(executable, codexArguments(directory, manifest, trace, approvedIds, model), { env, cwd: directory, stdio: ["pipe", "pipe", "pipe"], detached: process.platform !== "win32" });
       let output = "", eventBuffer = "", lastPhase: CliPhase | null = null, size = 0, stopped = false, spawnError = false;
+      const decoder = new TextDecoder();
       let killTimer: ReturnType<typeof setTimeout> | undefined;
       const kill = (signal: NodeJS.Signals) => { try { if (child.pid && process.platform !== "win32") process.kill(-child.pid, signal); else child.kill(signal); } catch {} };
       const stop = () => { stopped = true; kill("SIGTERM"); killTimer ??= setTimeout(() => kill("SIGKILL"), 1500); };
@@ -63,7 +64,8 @@ export async function runCodex(fixture: CliFixture, tools: readonly CliTool[], s
       signal.addEventListener("abort", stop, { once: true }); if (signal.aborted) stop();
       child.stdout.on("data", (chunk: Buffer) => {
         size += chunk.length; if (size > 1_000_000) { stop(); return; }
-        output += chunk.toString(); eventBuffer += chunk.toString();
+        const text = decoder.decode(chunk, { stream: true });
+        output += text; eventBuffer += text;
         let newline;
         while ((newline = eventBuffer.indexOf("\n")) >= 0) {
           const line = eventBuffer.slice(0, newline); eventBuffer = eventBuffer.slice(newline + 1);
@@ -77,7 +79,10 @@ export async function runCodex(fixture: CliFixture, tools: readonly CliTool[], s
       child.stderr.on("data", () => { /* Never expose raw CLI stderr or credential diagnostics. */ });
       child.on("error", () => { spawnError = true; });
       child.on("close", code => {
+        // Every CLI owns a detached group; parent exit does not settle its descendants.
+        kill("SIGKILL");
         clearTimeout(timer); clearTimeout(killTimer); signal.removeEventListener("abort", stop);
+        output += decoder.decode();
         let answer = "", usage: Record<string, unknown> = {}, completed = false;
         for (const line of output.split("\n")) { try { const event = JSON.parse(line); if (event.type === "item.completed" && event.item?.type === "agent_message" && typeof event.item.text === "string") answer = event.item.text.slice(0, 20000); if (event.type === "turn.completed") { usage = event.usage ?? {}; completed = true; } } catch {} }
         resolveResult({ status: signal.aborted ? "cancelled" : !stopped && !spawnError && code === 0 && completed ? "completed" : "failed", answer, durationMs: performance.now() - start, inputTokens: tokens(usage.input_tokens), cachedInputTokens: tokens(usage.cached_input_tokens), outputTokens: tokens(usage.output_tokens), toolCallCount: 0, traceTruncated: false, toolCalls: [], error: signal.aborted ? "Run cancelled." : stopped ? "CLI time or output limit reached." : spawnError ? "Codex CLI could not start. Install it and sign in on this host." : code !== 0 || !completed ? "Codex did not complete. Check host CLI sign-in and configuration." : null });

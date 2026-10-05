@@ -115,6 +115,25 @@ test("HTTP, transport, empty, JSON and body-limit failures are terminal and sani
   }
 });
 
+test("choice transport refuses redirects and records one terminal failure without retry", async () => {
+  let calls = 0, redirectMode: RequestRedirect | undefined;
+  const handle = createJevChoiceRouter({ key: "synthetic-test-credential", recovery: "probability_sum_only_v1", fetch: async (_url, init) => {
+    calls++; redirectMode = init?.redirect;
+    // Fetch rejects before following the redirect when redirect is set to error.
+    throw TypeError("synthetic-private-redirect-location");
+  } });
+  const receipt = await run(handle), ledger = handle.state.measurement!.attemptLedger!;
+  assert.equal(redirectMode, "error");
+  assert.equal(calls, 1);
+  assert.equal(receipt.outcome, "unavailable");
+  assert.equal(ledger.complete, true);
+  assert.equal(ledger.attempts.length, 1);
+  assert.equal(ledger.attempts[0]!.status, "transport_error");
+  assert.equal(ledger.stopReason, "failure");
+  assert.equal(ledger.returnedAttempt, null);
+  assert.doesNotMatch(JSON.stringify(handle.state), /synthetic-private-redirect-location|synthetic-test-credential/);
+});
+
 test("strict ledger replay rejects transitions, projection, usage and totals tampering", async () => {
   const { parseMeasurement, attemptTotals } = await import("../examples/routing/measurement.js");
   let calls = 0;

@@ -12,7 +12,7 @@ export async function POST(request: Request) {
   if (!localOrigin(request)) return json(403, { error: "Use this app's local origin." });
   if (request.headers.get("content-type") !== "application/json") return json(415, { error: "Use application/json." });
   let caseId: string;
-  try { const input = JSON.parse(await boundedText(request.body, 1024)); if (!input || Object.keys(input).join() !== "caseId" || typeof input.caseId !== "string") throw Error(); caseId = input.caseId; }
+  try { const input = JSON.parse(await boundedText(request.body, 1024, request.signal)); if (!input || Object.keys(input).join() !== "caseId" || typeof input.caseId !== "string") throw Error(); caseId = input.caseId; }
   catch { return json(400, { error: "Choose an arena example." }); }
   const fixture = ARENA_CASES.find(item => item.id === caseId);
   if (!fixture) return json(400, { error: "Unknown arena example." });

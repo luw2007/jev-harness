@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { loadFixtures } from "../src/benchmark/load.js";
 import { createMockTransport } from "../src/benchmark/mock.js";
 import { JEV_MODEL, REVIEW_QUESTION_IDS, type Fixture } from "../src/contract/types.js";
+import { buildReviewPayload } from "../src/contract/review.js";
 import { collect } from "../scripts/analyze-review-runs.js";
 import { createReviewHttpTransport } from "../examples/host/review-experiment.js";
 import { reviewProvenance, runReviewExperiment, type ReviewProvenance } from "../examples/review/experiment.js";
@@ -129,6 +130,67 @@ test("HTTP transport bounds response bytes, refuses redirects, and does not retr
   assert.equal(artifact.accounting.retries, 0);
 });
 
+test("review deadline bounds transports and response streams that ignore abort", async () => {
+  for (const phase of ["fetch", "body"] as const) {
+    let calls = 0, cancelled = false;
+    const handle = createReviewHttpTransport({ key: "synthetic-test-key", timeoutMs: 45, fetch: async () => {
+      calls++;
+      if (phase === "fetch") return new Promise<Response>(() => {});
+      return new Response(new ReadableStream({ cancel() { cancelled = true; } }));
+    } });
+    const started = performance.now(), keepAlive = setTimeout(() => {}, 1000);
+    try { await assert.rejects(handle.transport(buildReviewPayload(clean, clean.proposals.good))); }
+    finally { clearTimeout(keepAlive); }
+    assert.equal(calls, 1);
+    assert.equal(handle.state.measurement?.failure, "timeout");
+    assert.ok(performance.now() - started < 500);
+    if (phase === "body") assert.equal(cancelled, true);
+  }
+});
+
+test("review caller cancellation settles stalled fetch and body operations", async () => {
+  for (const phase of ["fetch", "body"] as const) {
+    const abort = new AbortController(); let calls = 0, cancelled = false;
+    const handle = createReviewHttpTransport({ key: "synthetic-test-key", fetch: async () => {
+      calls++;
+      if (phase === "fetch") { abort.abort(); return new Promise<Response>(() => {}); }
+      return new Response(new ReadableStream({ pull() { abort.abort(); }, cancel() { cancelled = true; } }));
+    } });
+    await assert.rejects(handle.transport(buildReviewPayload(clean, clean.proposals.good), abort.signal));
+    assert.equal(calls, 1);
+    assert.equal(handle.state.measurement?.failure, "cancelled");
+    if (phase === "body") assert.equal(cancelled, true);
+  }
+});
+
+test("a late response from a cancelled review fetch cancels its unused body", async () => {
+  const abort = new AbortController(); let cancelled = false;
+  const handle = createReviewHttpTransport({ key: "synthetic-test-key", fetch: async () => {
+    abort.abort(); await Promise.resolve();
+    return new Response(new ReadableStream({ cancel() { cancelled = true; } }));
+  } });
+  await assert.rejects(handle.transport(buildReviewPayload(clean, clean.proposals.good), abort.signal));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(cancelled, true);
+  assert.equal(handle.state.measurement?.failure, "cancelled");
+});
+
+test("HTTP error classification does not wait on an uncooperative body cancellation", async () => {
+  let cancelled = false;
+  const handle = createReviewHttpTransport({ key: "synthetic-test-key", fetch: async () => new Response(new ReadableStream({ cancel() { cancelled = true; return new Promise<void>(() => {}); } }), { status: 429 }) });
+  await assert.rejects(handle.transport(buildReviewPayload(clean, clean.proposals.good)));
+  assert.equal(cancelled, true);
+  assert.equal(handle.state.measurement?.failure, "http_error");
+  assert.equal(handle.state.measurement?.httpStatus, 429);
+});
+
+test("review response accounting records received bytes before malformed UTF-8 parsing", async () => {
+  const handle = createReviewHttpTransport({ key: "synthetic-test-key", fetch: async () => new Response(new Uint8Array([0xff])) });
+  await assert.rejects(handle.transport(buildReviewPayload(clean, clean.proposals.good)));
+  assert.equal(handle.state.measurement?.responseBytes, 1);
+  assert.equal(handle.state.measurement?.failure, "malformed_response");
+});
+
 test("provenance hashes current source and raw fixture files independently of working directory", async () => {
   const current = reviewProvenance();
   assert.match(current.revision!, /^[a-f0-9]{40}$/);
@@ -232,7 +294,7 @@ test("CLI defaults offline, refuses existing output before calls, and refuses CI
   const dir = await mkdtemp(join(tmpdir(), "review-experiment-"));
   try {
     const out = join(dir, "result.json"), logs = output();
-    const io = { env: { TYPESAFE_API_KEY: "synthetic-never-used" }, cwd: dir, provenance, now, ...logs.io, fetch: async () => { assert.fail("offline never calls fetch"); } };
+    const io = { env: { TYPESAFE_API_KEY: "<synthetic-never-used>" }, cwd: dir, provenance, now, ...logs.io, fetch: async () => { assert.fail("offline never calls fetch"); } };
     assert.equal(await main(["--out", out], io), 0);
     const artifact = JSON.parse(await readFile(out, "utf8"));
     assert.equal(artifact.source, "mock");
@@ -241,7 +303,7 @@ test("CLI defaults offline, refuses existing output before calls, and refuses CI
     await writeFile(out, "keep-existing");
     assert.equal(await main(["--live", "--out", out], io), 2);
     assert.equal(await readFile(out, "utf8"), "keep-existing");
-    assert.equal(await main(["--live", "--out", join(dir, "ci.json")], { ...io, env: { CI: "true", TYPESAFE_API_KEY: "synthetic-never-used" } }), 2);
+    assert.equal(await main(["--live", "--out", join(dir, "ci.json")], { ...io, env: { CI: "true", TYPESAFE_API_KEY: "<synthetic-never-used>" } }), 2);
     assert.equal(logs.text().includes("synthetic-never-used"), false);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
@@ -250,7 +312,7 @@ test("CLI writes an analyzable partial artifact on cancellation", async () => {
   const dir = await mkdtemp(join(tmpdir(), "review-experiment-abort-"));
   try {
     const controller = new AbortController(), logs = output(), out = join(dir, "partial.json");
-    const result = await main(["--live", "--out", out, "--runs", "4"], { env: { TYPESAFE_API_KEY: "synthetic-test-key" }, provenance, now, signal: controller.signal, ...logs.io, fetch: async () => { controller.abort(); throw Error("private-abort-detail"); } });
+    const result = await main(["--live", "--out", out, "--runs", "4"], { env: { TYPESAFE_API_KEY: "<synthetic-test-key>" }, provenance, now, signal: controller.signal, ...logs.io, fetch: async () => { controller.abort(); throw Error("private-abort-detail"); } });
     assert.equal(result, 130);
     const artifact = JSON.parse(await readFile(out, "utf8"));
     assert.equal(artifact.status, "cancelled");
@@ -265,7 +327,7 @@ test("concurrent CLI writers reserve the output before any live dispatch", async
   try {
     let calls = 0;
     const logs = output(), out = join(dir, "single.json");
-    const io = { env: { TYPESAFE_API_KEY: "synthetic-test-key" }, provenance, now, ...logs.io, fetch: async () => { calls++; return Response.json(response()); } };
+    const io = { env: { TYPESAFE_API_KEY: "<synthetic-test-key>" }, provenance, now, ...logs.io, fetch: async () => { calls++; return Response.json(response()); } };
     const results = await Promise.all([main(["--live", "--out", out], io), main(["--live", "--out", out], io)]);
     assert.deepEqual(results.sort(), [0, 2]);
     assert.equal(calls, 43);

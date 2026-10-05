@@ -26,7 +26,7 @@ export function createLiveHandler(options: { fetch?: typeof fetch; serverKey?: s
     if (!key || key.length > 1024 || !/^[\x21-\x7e]+$/.test(key)) return reject(400, "Add a valid TypeSafe API key in settings.");
     let input: { intent: string; availableIds: string[] };
     try {
-      input = JSON.parse(await boundedText(request.body, 68_000));
+      input = JSON.parse(await boundedText(request.body, 68_000, request.signal));
       if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).sort().join() !== "availableIds,intent" || typeof input.intent !== "string" || !input.intent.trim() || input.intent.length > 16_000 || !Array.isArray(input.availableIds) || input.availableIds.length > DEMO_CATALOG.length || new Set(input.availableIds).size !== input.availableIds.length || input.availableIds.some(id => !DEMO_CATALOG.some(tool => tool.id === id))) throw Error();
     } catch { return reject(400, "Invalid routing input."); }
     started = started.filter(at => Date.now() - at < 60_000);

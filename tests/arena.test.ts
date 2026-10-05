@@ -129,3 +129,66 @@ test("Windows CLI host refuses before workspace/auth/process setup", async () =>
     assert.equal(result.status, "failed"); assert.equal(result.durationMs, 0); assert.match(result.error!, /macOS or Linux/);
   } finally { Object.defineProperty(process, "platform", descriptor); }
 });
+
+test("CLI cancellation also kills descendants after the parent closes", async t => {
+  if (process.platform === "win32") { t.skip("Process-tree cancellation is unsupported on Windows."); return; }
+  const dir = await mkdtemp(join(tmpdir(), "jev-cli-cancel-test-"));
+  const fake = join(dir, "fake-cli"), pidFile = join(dir, "descendant-pid");
+  let descendantPid: number | undefined;
+  t.after(async () => { if (descendantPid) { try { process.kill(descendantPid, "SIGKILL"); } catch {} } await rm(dir, { recursive: true, force: true }); });
+  const descendant = 'process.on("SIGTERM",()=>{});console.log("ready");setInterval(()=>{},1000);';
+  await writeFile(fake, `#!/usr/bin/env node\nconst {spawn}=require("node:child_process");const {writeFileSync}=require("node:fs");const child=spawn(process.execPath,["-e",${JSON.stringify(descendant)}],{stdio:["ignore","pipe","ignore"]});writeFileSync(${JSON.stringify(pidFile)},String(child.pid));child.stdout.once("data",()=>console.log(JSON.stringify({type:"turn.started"})));process.stdin.resume();\n`, { mode: 0o700 });
+  const abort = new AbortController();
+  const result = await runCodex(ARENA_CASES[0], [], abort.signal, fake, () => abort.abort());
+  descendantPid = Number(await readFile(pidFile, "utf8"));
+  assert.equal(result.status, "cancelled");
+  const alive = () => { try { process.kill(descendantPid!, 0); return true; } catch { return false; } };
+  // Give the OS time to reap the killed orphan before checking its pid.
+  for (let i = 0; i < 100 && alive(); i++) await new Promise(resolve => setTimeout(resolve, 10));
+  assert.equal(alive(), false, "a descendant that ignores SIGTERM must not survive parent exit");
+});
+
+test("arena rejects a cancelled stalled request body before starting a comparison", async () => {
+  const { POST } = await import("../app/api/arena/route");
+  const abort = new AbortController(); let cancelled = false;
+  const body = new ReadableStream<Uint8Array>({ pull() { abort.abort(); }, cancel() { cancelled = true; } });
+  const base = "http://127.0.0.1:4173";
+  const request = new Request(base + "/api/arena", { method: "POST", headers: { origin: base, "content-type": "application/json" }, body, signal: abort.signal, duplex: "half" } as RequestInit);
+  const response = await POST(request);
+  assert.equal(response.status, 400);
+  assert.equal(cancelled, true);
+  assert.equal(body.locked, false);
+});
+
+test("CLI output preserves Unicode split across arbitrary stdout chunks", async t => {
+  if (process.platform === "win32") { t.skip("The CLI adapter is unsupported on Windows."); return; }
+  const dir = await mkdtemp(join(tmpdir(), "jev-cli-unicode-test-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const fake = join(dir, "fake-cli"), answer = "Synthetic 中文 🧪";
+  await writeFile(fake, `#!/usr/bin/env node\nconst bytes=Buffer.from(JSON.stringify({type:"item.completed",item:{type:"agent_message",text:${JSON.stringify(answer)}}})+"\\n"+JSON.stringify({type:"turn.completed",usage:{input_tokens:1,output_tokens:1}})+"\\n");const split=bytes.indexOf(Buffer.from("中"))+1;process.stdout.write(bytes.subarray(0,split));setTimeout(()=>process.stdout.write(bytes.subarray(split)),20);\n`, { mode: 0o700 });
+  const result = await runCodex(ARENA_CASES[0], [], new AbortController().signal, fake);
+  assert.equal(result.status, "completed");
+  assert.equal(result.answer, answer);
+});
+
+test("CLI completion and failure settle their process group without changing recorded results", async t => {
+  if (process.platform === "win32") { t.skip("Process-tree cleanup is unsupported on Windows."); return; }
+  const dir = await mkdtemp(join(tmpdir(), "jev-cli-close-test-"));
+  const descendantPids: number[] = [];
+  t.after(async () => { for (const pid of descendantPids) { try { process.kill(pid, "SIGKILL"); } catch {} } await rm(dir, { recursive: true, force: true }); });
+  for (const status of ["completed", "failed"] as const) {
+    const fake = join(dir, `fake-${status}`), pidFile = join(dir, `${status}-pid`);
+    const descendant = `process.on("SIGTERM",()=>{});require("node:fs").writeFileSync(${JSON.stringify(pidFile)},String(process.pid));setInterval(()=>{},1000);`;
+    await writeFile(fake, `#!/usr/bin/env node\nconst {spawn}=require("node:child_process");const {existsSync}=require("node:fs");const child=spawn(process.execPath,["-e",${JSON.stringify(descendant)}],{stdio:"ignore"});child.unref();const timer=setInterval(()=>{if(!existsSync(${JSON.stringify(pidFile)}))return;clearInterval(timer);console.log(JSON.stringify({type:"item.completed",item:{type:"agent_message",text:"Synthetic answer"}}));console.log(JSON.stringify({type:"turn.completed",usage:{input_tokens:9,cached_input_tokens:3,output_tokens:2}}));process.exitCode=${status === "completed" ? 0 : 1};},10);process.stdin.resume();\n`, { mode: 0o700 });
+    const result = await runCodex(ARENA_CASES[0], [], new AbortController().signal, fake);
+    const pid = Number(await readFile(pidFile, "utf8")); descendantPids.push(pid);
+    assert.equal(result.status, status);
+    assert.equal(result.answer, "Synthetic answer");
+    assert.equal(result.inputTokens, 9);
+    assert.equal(result.cachedInputTokens, 3);
+    assert.equal(result.outputTokens, 2);
+    const alive = () => { try { process.kill(pid, 0); return true; } catch { return false; } };
+    for (let i = 0; i < 100 && alive(); i++) await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(alive(), false, `${status} parent must leave no running descendant in its group`);
+  }
+});

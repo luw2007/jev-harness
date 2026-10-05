@@ -71,3 +71,22 @@ test("manual override takes precedence and removing it restores the server key",
   }
   assert.deepEqual(authorizations, ["Bearer synthetic-server-credential", "Bearer synthetic-manual-credential", "Bearer synthetic-replacement-credential", "Bearer synthetic-server-credential"]);
 });
+
+test("cancelled request bodies settle without dispatch and cancel their reader", async () => {
+  for (const preAborted of [true, false]) {
+    const abort = new AbortController(); let cancelled = false;
+    if (preAborted) abort.abort();
+    const body = new ReadableStream<Uint8Array>({
+      pull() { if (!preAborted) abort.abort(); },
+      cancel() { cancelled = true; },
+    });
+    const handler = createLiveHandler({ serverKey: "synthetic-test-credential", fetch: async () => { assert.fail("cancelled body must not dispatch"); } });
+    const base = "http://127.0.0.1:4173";
+    const request = new Request(base + "/api/route", { method: "POST", headers: { origin: base, "content-type": "application/json" }, body, signal: abort.signal, duplex: "half" } as RequestInit);
+    const response = await handler(request);
+    assert.equal(response.status, 400);
+    assert.equal((await response.json()).attempted, false);
+    assert.equal(cancelled, true);
+    assert.equal(body.locked, false);
+  }
+});
